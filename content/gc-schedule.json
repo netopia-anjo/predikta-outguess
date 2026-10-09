@@ -1,0 +1,11 @@
+{
+  "_note": "PLACEHOLDER. Replace days and blocks once AdSpark confirms Digicon days and booth hours. Times are Manila time (UTC+8). Unused GCs roll into the next block. Allocations across all days must not exceed totalCap.",
+  "totalCap": 300,
+  "days": ["2026-11-11", "2026-11-12", "2026-11-13"],
+  "blocks": [
+    { "start": "10:00", "end": "12:00", "allocation": 25 },
+    { "start": "12:00", "end": "14:00", "allocation": 25 },
+    { "start": "14:00", "end": "16:00", "allocation": 25 },
+    { "start": "16:00", "end": "18:00", "allocation": 25 }
+  ]
+}

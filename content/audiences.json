@@ -1,0 +1,137 @@
+[
+  {
+    "id": "genz",
+    "name": "Gen Z, Metro Manila",
+    "meta": "18–24 · students & first-jobbers · commute daily",
+    "chips": ["Price-sensitive", "Barkada-driven", "Meme-fluent"],
+    "rounds": [
+      {
+        "brand": "Brewha",
+        "product": "Brewha milk tea",
+        "objective": "New branch launch · drive store visits",
+        "a": { "visual": "Polished studio shot of one drink on marble.", "copy": "Premium taste, now in Katipunan.", "b1": "#F4F0E9", "b2": "#DCCFBC", "k": "#2B2118", "a": "#B08A62", "v": "" },
+        "b": { "visual": "Lo-fi phone-style photo of 4 friends in a jeepney holding cups.", "copy": "Pang-tropa price: Buy 2 for ₱99.", "b1": "#FF6B3D", "b2": "#FFB33B", "k": "#1B0F06", "a": "#FFF1D0", "v": "v2" },
+        "winner": "b",
+        "split": { "a": 32, "b": 68 },
+        "emotion": "Belonging",
+        "driver": "Social proof + price anchoring: group framing and a clear ₱ price beat \"premium\".",
+        "reactions": ["Sulit 'to for barkada!", "Mukhang totoo, hindi ad."]
+      },
+      {
+        "brand": "Volt X",
+        "product": "Volt X budget smartphone",
+        "objective": "Launch · drive add-to-cart",
+        "a": { "visual": "Product on a dark background with a specs grid.", "copy": "108MP. 5000mAh. ₱8,990.", "b1": "#0D0F14", "b2": "#2A3042", "k": "#E8ECF5", "a": "#4D7CFF", "v": "v3" },
+        "b": { "visual": "POV selfie at a crowded concert, phone at 64% battery.", "copy": "Buong concert, hindi ka mauubusan.", "b1": "#E8325A", "b2": "#FF8A3D", "k": "#FFFFFF", "a": "#FFE15C", "v": "" },
+        "winner": "b",
+        "split": { "a": 39, "b": 61 },
+        "emotion": "Excitement",
+        "driver": "Benefit over spec: battery shown as a real moment, not a number.",
+        "reactions": ["Relate, laging lowbat ako sa gigs.", "Ano specs? Pero gusto ko na."]
+      },
+      {
+        "brand": "Ipon+",
+        "product": "Ipon+ savings app",
+        "objective": "App installs",
+        "surprise": true,
+        "a": { "visual": "Two-panel meme: \"Sweldo day\" (happy) vs \"3 days after\" (empty wallet).", "copy": "Ipon+ saves you from yourself.", "b1": "#FFFFFF", "b2": "#F1F1F1", "k": "#111111", "a": "#FFD400", "v": "v3" },
+        "b": { "visual": "Aspirational travel shot in Kyoto.", "copy": "Save for Japan in 12 months.", "b1": "#F7C6CF", "b2": "#EE95A6", "k": "#3A0F18", "a": "#FFFFFF", "v": "" },
+        "winner": "a",
+        "split": { "a": 57, "b": 43 },
+        "emotion": "Amusement",
+        "driver": "Self-recognition + present bias: a familiar pain today beats a distant goal.",
+        "reactions": ["Ako 'to every kinsenas.", "Japan? Pang-pamasahe nga kulang."]
+      }
+    ]
+  },
+  {
+    "id": "moms",
+    "name": "Moms & Titas, Mega Manila",
+    "meta": "35–50 · household decision-makers · value-conscious",
+    "chips": ["Trust-first", "Family time", "Health-aware"],
+    "rounds": [
+      {
+        "brand": "Puti Pro",
+        "product": "Puti Pro detergent",
+        "objective": "Brand switch · drive trial",
+        "a": { "visual": "Mom-to-mom testimonial at a sari-sari store, holding a white school uniform.", "copy": "Isang banlaw lang, puti na.", "b1": "#FFF7E0", "b2": "#FFE19A", "k": "#3B2A00", "a": "#2E7DFF", "v": "v2" },
+        "b": { "visual": "Lab-coat scientist beside a stain-removal chart.", "copy": "Clinically proven 3x stain removal.", "b1": "#E6F1FA", "b2": "#BFD8EE", "k": "#0B2A45", "a": "#0B6FB8", "v": "v3" },
+        "winner": "a",
+        "split": { "a": 72, "b": 28 },
+        "emotion": "Trust",
+        "driver": "Messenger effect: a peer like them is more credible than a lab coat.",
+        "reactions": ["Parang kapitbahay ko lang, sige try ko.", "Ayan, uniform problem talaga 'yan."]
+      },
+      {
+        "brand": "PayLokal",
+        "product": "PayLokal e-wallet",
+        "objective": "Bills payment adoption",
+        "a": { "visual": "Clean phone UI showing 3 taps.", "copy": "Pay bills in 3 taps.", "b1": "#0F8B7E", "b2": "#19B5A4", "k": "#FFFFFF", "a": "#E8FFF9", "v": "v3" },
+        "b": { "visual": "Split image: long payment-center queue vs family at dinner.", "copy": "Wala nang pila. Mas maraming oras sa pamilya.", "b1": "#F4E1D2", "b2": "#E5B998", "k": "#3A1F0E", "a": "#C8553D", "v": "v2" },
+        "winner": "b",
+        "split": { "a": 36, "b": 64 },
+        "emotion": "Relief",
+        "driver": "Loss aversion: showing time lost in line moves more than ease of use.",
+        "reactions": ["Ay oo, sayang oras sa pila.", "Safe ba 'to? Pero gusto ko 'yung wala nang pila."]
+      },
+      {
+        "brand": "Ulam Express",
+        "product": "Ulam Express frozen meals",
+        "objective": "Drive first purchase",
+        "surprise": true,
+        "a": { "visual": "Clean flat-lay of a meal with fresh vegetables.", "copy": "No preservatives. Real ingredients.", "b1": "#EAF5E4", "b2": "#C6E3B6", "k": "#16361A", "a": "#4E9A3A", "v": "" },
+        "b": { "visual": "Busy mom serving kids at a set dinner table.", "copy": "Ulam ready in 10 minutes.", "b1": "#FFE3D3", "b2": "#FFBE9E", "k": "#401B0A", "a": "#E2622E", "v": "v2" },
+        "winner": "a",
+        "split": { "a": 55, "b": 45 },
+        "emotion": "Reassurance",
+        "driver": "Guilt avoidance: \"is this healthy for my kids?\" outweighs convenience.",
+        "reactions": ["Basta walang preservatives, okay sa 'kin.", "10 minutes nice, pero healthy ba?"]
+      }
+    ]
+  },
+  {
+    "id": "cebu",
+    "name": "Young professionals, Metro Cebu",
+    "meta": "25–34 · office & BPO workers",
+    "chips": ["Time-poor", "Practical", "Local pride"],
+    "rounds": [
+      {
+        "brand": "MoveMo",
+        "product": "MoveMo fitness app",
+        "objective": "Free-trial sign-ups",
+        "a": { "visual": "Chiseled model lifting in a gym.", "copy": "Get shredded in 30 days.", "b1": "#1A1A1A", "b2": "#3C3C3C", "k": "#FFFFFF", "a": "#FF3B30", "v": "v2" },
+        "b": { "visual": "Person in office clothes doing a home workout at night.", "copy": "15-minute workouts after your shift.", "b1": "#E8EEF9", "b2": "#C3D2EE", "k": "#14223F", "a": "#3C5FA8", "v": "" },
+        "winner": "b",
+        "split": { "a": 30, "b": 70 },
+        "emotion": "Confidence",
+        "driver": "Low-friction goal: a realistic 15 minutes beats an intimidating transformation.",
+        "reactions": ["Kaya 'ni bisan pagod.", "Finally, for night shift people."]
+      },
+      {
+        "brand": "HomeStart",
+        "product": "HomeStart home loans",
+        "objective": "Lead form submissions",
+        "a": { "visual": "Luxury condo with a sea view at golden hour.", "copy": "Live the dream.", "b1": "#0E3B5C", "b2": "#1F7FA8", "k": "#FFFFFF", "a": "#F5D07A", "v": "" },
+        "b": { "visual": "Simple loan calculator graphic.", "copy": "₱12,500/month. Less than your rent.", "b1": "#FFFFFF", "b2": "#E9EEF4", "k": "#10172A", "a": "#0F8B7E", "v": "v3" },
+        "winner": "b",
+        "split": { "a": 34, "b": 66 },
+        "emotion": "Hope",
+        "driver": "Rent anchoring: a concrete number compared to what they already pay.",
+        "reactions": ["Mas mahal pa diay akong renta.", "Pwede ko 'to i-compute."]
+      },
+      {
+        "brand": "Lami Eats",
+        "product": "Lami Eats food delivery",
+        "objective": "First orders",
+        "surprise": true,
+        "a": { "visual": "Bold promo graphic with a delivery rider.", "copy": "Free delivery all week!", "b1": "#FF2D55", "b2": "#FF7A2D", "k": "#FFFFFF", "a": "#FFE600", "v": "v2" },
+        "b": { "visual": "Warm photo of a carinderia counter with lutong bahay.", "copy": "Your favorite carinderia, delivered.", "b1": "#F6E7C8", "b2": "#E2BE7E", "k": "#3B2508", "a": "#A0522D", "v": "" },
+        "winner": "b",
+        "split": { "a": 42, "b": 58 },
+        "emotion": "Nostalgia",
+        "driver": "Local pride + familiarity beat a generic discount.",
+        "reactions": ["Nindot! Miss na nako lutong bahay.", "Free delivery ok ra, pero this one feels like home."]
+      }
+    ]
+  }
+]

@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: outguess
+      POSTGRES_USER: outguess
+      POSTGRES_PASSWORD: outguess
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - outguess-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U outguess -d outguess"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  outguess-db:
