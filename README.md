@@ -9,6 +9,8 @@ The AdSpark × Predikta booth game, rebuilt in Next.js with PostgreSQL. Players 
 | `/staff` | PIN-protected claims, leads and CSV exports |
 | `/api/health` | Database and seeded-event readiness |
 
+The phone starting screen shows a static A-versus-B preview, a compact three-round/time summary, current GCash availability or the next release, and an expandable top-three leaderboard. Its **Take the challenge** button stays visible while the landing content scrolls; it opens the existing registration form. The preview uses the first audience's first public ad pair and does not record a pick or expose an answer. The points badge appears after leaving the landing screen. TV presentation and the registration/game/reward rules retain their existing behavior.
+
 ## Local setup
 
 Requires Node.js 24+ and Docker. The app uses port 3100 and a dedicated PostgreSQL container on port 5434.

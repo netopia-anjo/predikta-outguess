@@ -2,13 +2,14 @@
 // The game, shared by the player phone and the big TV. Only the layout differs (see tv.css).
 // The server is authoritative: we send pick + confidence + time, it returns the reveal and points.
 import { useEffect, useRef, useState } from 'react';
-import type { ConfIdx, ContentPayload, Me, Reveal, Side } from '../../shared/types';
+import type { Board, ConfIdx, ContentPayload, Me, Reveal, Side } from '../../shared/types';
 import { CONF, PERSONAS, ROUND_SECS } from '../../shared/rules';
 import { CHALLENGES, INDUSTRIES, PLANNING, SIGNUP_LIMITS, normalizeMobile, validateSignup, type SignupErrors, type SignupInput } from '../../shared/validation';
 import { api, ApiError } from '../../lib/api';
 import { fmt, manilaTime } from '../../lib/hooks';
 import { AdCard, Brand, Dots, Qr, SplitBar, Wallet } from './bits';
 import { MobileInput } from './MobileInput';
+import { PhoneLanding } from './PhoneLanding';
 
 export type Variant = 'phone' | 'tv';
 type Screen = 'landing' | 'signup' | 'howto' | 'audience' | 'round' | 'reveal' | 'results' | 'claim';
@@ -64,11 +65,12 @@ interface Props {
   variant: Variant;
   content: ContentPayload;
   gcLeftToday: number | null;
+  landingBoard?: Board | null;
   onPlayer?: (id: string | null) => void;
   onAccessDenied?: () => void;
 }
 
-export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, onAccessDenied }: Props) {
+export function Game({ variant, content: initialContent, gcLeftToday, landingBoard, onPlayer, onAccessDenied }: Props) {
   const [s, setState] = useState<State>(fresh);
   const ref = useRef<State>(s);
   const screenEl = useRef<HTMLDivElement>(null);
@@ -384,6 +386,7 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
   const round = audience?.rounds[s.r];
 
   function Landing() {
+    if (variant === 'phone') return <PhoneLanding content={content} board={landingBoard} />;
     return (
       <>
         <div className="hero">
@@ -726,15 +729,16 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
   };
   const Body = SCREENS[s.screen];
   const modalRound = s.modal && round;
+  const phoneLanding = variant === 'phone' && s.screen === 'landing';
 
   return (
-    <div className={`game ${variant === 'phone' ? 'phoneapp' : ''}`} role={variant === 'phone' ? 'main' : undefined}>
+    <div className={`game ${variant === 'phone' ? 'phoneapp' : ''}${phoneLanding ? ' phone-landing' : ''}`} role={variant === 'phone' ? 'main' : undefined}>
       <div className="pbar">
         <span className="who">
           <Brand />
           {variant === 'tv' && <span>· playing on the big screen</span>}
         </span>
-        <Wallet value={s.wallet} />
+        {phoneLanding ? <span className="play-event">Digicon 2026</span> : <Wallet value={s.wallet} />}
       </div>
       {s.net && (
         <div className="netbar" role="status">
@@ -747,6 +751,12 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
       <div className="screen" data-s={s.screen} ref={screenEl} inert={!!s.modal}>
         {Body()}
       </div>
+      {phoneLanding && <footer className="play-actionbar">
+        <button type="button" className="btn spark" disabled={s.busy || !!s.token} onClick={() => go('signup')}>
+          {s.token ? 'Resuming your game…' : <><span>Take the challenge</span><span aria-hidden="true">→</span></>}
+        </button>
+        <p>One play per mobile number.</p>
+      </footer>}
       {modalRound && (
         <div className="modal" aria-modal="true" role="dialog" aria-label={`Ad ${s.modal!.toUpperCase()} enlarged`} onClick={(e) => e.target === e.currentTarget && closeModal()}>
           <AdCard ad={modalRound[s.modal!]} brand={modalRound.brand} label={s.modal!.toUpperCase()} inert />

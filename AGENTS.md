@@ -31,6 +31,8 @@ The app uses Next.js 16 App Router, React 19, TypeScript, and PostgreSQL through
 | `/staff` | PIN-protected dashboard, reward lookup/camera scanning, number and payout confirmations, manual fulfillment recording, lead lists, and CSV exports. |
 | `/api/health` | Checks database connectivity and seeded event readiness. |
 
+The implemented `/play` starting screen is a phone-only invitation with a static A-versus-B ad preview, compact “3 rounds · ~3 minutes” summary, current reward status, and an expandable top-three leaderboard. A bottom **Take the challenge** action bar stays visible while the content scrolls and opens the existing registration screen. The landing header hides the points badge and shows the event label; other game screens retain their points display. `src/components/game/PhoneLanding.tsx` renders this content using public content and the existing board supplied through the optional `landingBoard` game prop. The preview has no selectable controls, records no pick, and exposes no answers. Keep these styles scoped to `.phone-landing`; the TV starting screen was explicitly excluded from this change.
+
 Important files and responsibilities:
 
 - `src/components/game/Game.tsx`: shared phone/TV game flow. Phone sessions can resume from saved browser state; TV player state resets between attendees and after idle periods.
@@ -93,4 +95,4 @@ Production activation is pending final AdSpark ad images, approved Predikta pref
 
 The agreed implementation excludes a gallery, separate analytics display, Crowd Showdown, SMS OTP, Google Sheets sync, live Predikta requests, automatic wallet/payout integration, and cross-device recovery. Do not introduce these without a new user request.
 
-An animated TV attract screen, attendee-versus-Predikta comparisons per reveal, and a registration-to-completion dashboard were suggested after researching similar apps. They are proposals, not implemented features or authorized work.
+The user narrowed the engagement upgrade to the `/play` starting screen and selected a visual-only ad preview. TV invitation changes were explicitly excluded. Animated reveals, personal rank/scorecards, attendee-versus-Predikta comparisons, and a registration-to-completion dashboard remain proposals rather than implemented features or authorized follow-up work. Registration requirements and the later game flow have not been shortened.
