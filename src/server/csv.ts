@@ -10,6 +10,7 @@ const columns: [string,(r:Row)=>unknown][] = [
   ['consent_version',r=>r.consent_version],['consent_at_manila',r=>stamp(r.consent_at as number)],['audience',r=>r.audience_id],
   ['wants_simulation',r=>r.wants_sim],['score',r=>r.score],['correct',r=>r.correct],['persona',r=>r.persona],
   ['claim_code',r=>r.code],['awarded_at_manila',r=>stamp(r.awarded_at as number)],['fulfilled_at_manila',r=>stamp(r.claimed_at as number)],
+  ['prize_id',r=>r.prize_id],['prize_name',r=>r.prize_name??(r.claimed_at?'Previously fulfilled (historical record)':'')],['gcash_amount_php',r=>r.amount_php],
   ['registered_at_manila',r=>stamp(r.created_at as number)],['finished_at_manila',r=>stamp(r.finished_at as number)]
 ];
 const cell = (value: unknown) => `"${safeCell(value).replaceAll('"','""')}"`;

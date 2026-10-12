@@ -4,12 +4,16 @@ import type { IScannerControls } from '@zxing/browser';
 import { api,ApiError } from '@/lib/api';
 import { fmt,manilaTime } from '@/lib/hooks';
 import { Brand } from './game/bits';
+import { InventoryPanel } from './InventoryPanel';
+import { PrizeWheel } from './PrizeWheel';
+import type { FulfillResult, PrizeInventory, PrizeWheelResult, StaffClaim } from '@/shared/types';
 import { CLAIM_CODE_PATTERN, normalizeClaimCode, validStaffPin } from '@/shared/validation';
 
-interface Claim { name:string;company:string;role:string;mobile:string;score:number|null;persona:string|null;code:string;claimed:boolean;claimedAt:number|null }
-interface Lead {name:string;email:string;company:string;role:string;challenge:string;planning:string;wantsSim:boolean;claimed:boolean}
+type Claim = StaffClaim;
+interface Lead {name:string;email:string;company:string;role:string;challenge:string|null;planning:string|null;wantsSim:boolean;claimed:boolean}
 interface Summary {
-  kpis:{playsToday:number;claimedToday:number;leftToday:number;allocToday:number;awardedTotal:number;cap:number;waitingForDrop:number;hotLeads:number};
+  inventory:PrizeInventory;
+  kpis:{playsToday:number;claimedToday:number;remaining:number;hotLeads:number};
   pending:{name:string;company:string;code:string;awardedAt:number}[];
   leads:Lead[];
 }
@@ -52,7 +56,8 @@ export function StaffApp() {
   const [code,setCode]=useState('');
   const [claim,setClaim]=useState<Claim|null>(null);
   const [numberConfirmed,setNumberConfirmed]=useState(false);
-  const [fulfillmentConfirmed,setFulfillmentConfirmed]=useState(false);
+  const [wheel,setWheel]=useState<PrizeWheelResult|null>(null);
+  const [revealing,setRevealing]=useState(false);
   const [scanning,setScanning]=useState(false);
   const [filter,setFilter]=useState('');
   const [codeError,setCodeError]=useState('');
@@ -70,7 +75,7 @@ export function StaffApp() {
     let alive=true;
     let timer:ReturnType<typeof setTimeout>;
     async function poll(){
-      try{const s=await api<Summary>('/api/staff/summary',{retries:0});if(alive){setSummary(s);setOnline(true);}}
+      try{const s=await api<Summary>('/api/staff/summary',{retries:0});if(alive){setSummary(current=>current&&current.inventory.revision>s.inventory.revision?current:s);setOnline(true);}}
       catch(e){if(alive){setOnline(false);if(e instanceof ApiError&&e.status===401){setAuth('out');setSummary(null);setClaim(null);}}}
       if(alive)timer=setTimeout(poll,5000);
     }
@@ -94,7 +99,7 @@ export function StaffApp() {
   async function find(value=code){
     if(operation.current)return;
     const clean=normalizeClaimCode(value);
-    setCode(clean);setClaim(null);setNumberConfirmed(false);setFulfillmentConfirmed(false);setMessage('');
+    setCode(clean);setClaim(null);setNumberConfirmed(false);setWheel(null);setMessage('');
     if(!CLAIM_CODE_PATTERN.test(clean)){setCodeError('Enter the six-character code shown on the player’s reward screen.');return;}
     setCodeError('');
     if(!begin())return;
@@ -103,10 +108,20 @@ export function StaffApp() {
     finally{end();}
   }
   async function fulfill(){
-    if(!claim||!numberConfirmed||!fulfillmentConfirmed||!begin())return;setScanning(false);
-    try{setClaim(await api<Claim>(`/api/staff/claims/${claim.code}/claim`,{body:{confirmedNumber:numberConfirmed,fulfillmentConfirmed},retries:2}));setMessage('Fulfillment recorded.');}
-    catch(e){fail(e,'Could not save. Retry to check and record the same claim.');}
-    finally{end();}
+    if(!claim||claim.claimed||!numberConfirmed||!begin())return;
+    setScanning(false);setWheel(null);setRevealing(true);
+    try {
+      const result=await api<FulfillResult>(`/api/staff/claims/${claim.code}/claim`,{body:{confirmedNumber:true,fulfillmentConfirmed:true},retries:2});
+      setClaim(result);
+      if(result.wheel&&!result.replayed) {
+        setWheel(result.wheel);
+        await new Promise(resolve=>setTimeout(resolve,window.matchMedia('(prefers-reduced-motion: reduce)').matches?0:3100));
+      }
+      setMessage(result.replayed?'This claim was already fulfilled. The saved prize is shown.':'Fulfillment recorded.');
+      try{const updated=await api<Summary>('/api/staff/summary',{retries:0});setSummary(current=>current&&current.inventory.revision>updated.inventory.revision?current:updated);}catch{/* Scheduled polling will reconnect. */}
+    } catch(error) {
+      fail(error,error instanceof ApiError&&error.code==='out_of_stock'?'Prizes are out of stock. Restock before fulfilling this claim.':'Could not confirm fulfillment. Find this code again to check the saved prize before retrying.');
+    } finally {setRevealing(false);end();}
   }
   async function logout(){
     if(!begin())return;
@@ -119,17 +134,28 @@ export function StaffApp() {
   const k=summary?.kpis;
   const leads=summary?.leads.filter(p=>`${p.name} ${p.company} ${p.email} ${p.role}`.toLowerCase().includes(filter.toLowerCase()))??[];
   return <div className="wrap"><header className="bar"><div className="mark"><Brand/><div><b>Outguess the Crowd</b><small>Staff desk</small></div></div><span className="chip">{summary?(online?'Connected':'Reconnecting…'):(online?'Loading…':'Reconnecting…')}</span><a className="ghost" href="/api/staff/export.csv">Export sign-ups</a><a className="ghost" href="/api/staff/claims.csv">Export claims</a><button className="ghost" disabled={busy} onClick={logout}>Sign out</button></header>
-    <main className="staff"><div className="kpis">{[['Plays today',k?.playsToday],['Fulfilled today',k?.claimedToday],['GCs left today',k?.leftToday],['Hot leads',k?.hotLeads]].map(([label,n])=><div className="kpi" key={label}><b>{n??'–'}</b><span>{label}</span></div>)}</div>
+    <main className="staff"><div className="kpis">{[['Plays today',k?.playsToday],['Fulfilled today',k?.claimedToday],['Prizes remaining',k?.remaining],['Hot leads',k?.hotLeads]].map(([label,n])=><div className="kpi" key={label}><b>{n??'–'}</b><span>{label}</span></div>)}</div>
+      <InventoryPanel inventory={summary?.inventory??null} disabled={busy} onSaved={inventory=>setSummary(current=>current?{...current,inventory,kpis:{...current.kpis,remaining:inventory.remaining}}:current)} onAccessDenied={()=>{setAuth('out');setSummary(null);setClaim(null);setMessage('Session expired. Sign in again.');}} />
       <div className="cols"><section className="panel"><div className="panelhead"><h2>Confirm a reward</h2><button className="ghost" disabled={busy} onClick={()=>setScanning(v=>!v)}>{scanning?'Hide camera':'Scan QR'}</button></div>
         {scanning&&<Scanner onCode={value=>{setScanning(false);void find(value);}} onClose={()=>setScanning(false)}/>}
-        <form className="find" noValidate aria-busy={busy} onSubmit={e=>{e.preventDefault();void find();}}><input aria-label="Claim code" required disabled={busy} aria-invalid={!!codeError} aria-describedby={codeError?'staff-code-error':undefined} value={code} onChange={e=>{setCode(e.target.value.toUpperCase());setClaim(null);setNumberConfirmed(false);setFulfillmentConfirmed(false);setCodeError('');setMessage('');}} placeholder="CODE" maxLength={6} autoComplete="off"/><button className="btn" disabled={busy}>{busy?'Checking…':'Find'}</button></form>
+        <form className="find" noValidate aria-busy={busy} onSubmit={e=>{e.preventDefault();void find();}}><input aria-label="Claim code" required disabled={busy} aria-invalid={!!codeError} aria-describedby={codeError?'staff-code-error':undefined} value={code} onChange={e=>{setCode(e.target.value.toUpperCase());setClaim(null);setNumberConfirmed(false);setWheel(null);setCodeError('');setMessage('');}} placeholder="CODE" maxLength={6} autoComplete="off"/><button className="btn" disabled={busy}>{busy?'Checking…':'Find'}</button></form>
         {codeError&&<p id="staff-code-error" className="err" role="alert">{codeError}</p>}
         {message&&<p className={message==='Fulfillment recorded.'?'toast':'err'} role={message==='Fulfillment recorded.'?'status':'alert'}>{message}</p>}
-        {claim&&<div className="pcard"><dl className="kv"><dt>Player</dt><dd>{claim.name}</dd><dt>Company</dt><dd>{claim.company} · {claim.role}</dd><dt>GCash number</dt><dd className="num">{claim.mobile}</dd><dt>Code</dt><dd className="num">{claim.code}</dd><dt>Score</dt><dd>{fmt(claim.score??0)} · {claim.persona}</dd><dt>Status</dt><dd>{claim.claimed?`Fulfilled ${claim.claimedAt?manilaTime(claim.claimedAt):''}`:'Reserved · awaiting fulfillment'}</dd></dl>
-          {!claim.claimed&&<><label className="opt"><input type="checkbox" disabled={busy} checked={numberConfirmed} onChange={e=>setNumberConfirmed(e.target.checked)}/><span>The player’s GCash number matches the number above.</span></label><label className="opt"><input type="checkbox" disabled={busy} checked={fulfillmentConfirmed} onChange={e=>setFulfillmentConfirmed(e.target.checked)}/><span>I have arranged the manual payout with AdSpark.</span></label><button className="btn pred" disabled={busy||!numberConfirmed||!fulfillmentConfirmed} onClick={fulfill}>Record fulfillment</button><p className="small muted">This records the booth payout. It does not send money.</p></>}
+        {claim&&<div className="pcard"><dl className="kv"><dt>Player</dt><dd>{claim.name}</dd><dt>Company</dt><dd>{claim.company} · {claim.role}</dd><dt>Business number</dt><dd className="num">{claim.mobile}</dd><dt>Code</dt><dd className="num">{claim.code}</dd><dt>Score</dt><dd>{fmt(claim.score??0)} · {claim.persona}</dd><dt>Status</dt><dd>{claim.claimed?`Fulfilled ${claim.claimedAt?manilaTime(claim.claimedAt):''}`:'Awaiting prize draw'}</dd></dl>
+          {revealing&&<p className="small muted" role="status">{wheel?'Revealing the saved prize…':'Drawing your prize…'}</p>}
+          {wheel&&<PrizeWheel result={wheel} />}
+          {!wheel&&!claim.claimed&&!!summary?.inventory.remaining&&<PrizeWheel animate={false} result={{items:summary.inventory.items.filter(p=>p.remaining>0),prizeId:''}} />}
+          {claim.claimed&&!revealing&&<div className="prize-result" role="status"><span className="eyebrow">Prize fulfilled</span><h3>{claim.prize?.name??'Previously fulfilled · historical record'}</h3>
+            {claim.prize?.amountPhp&&<p className="small muted">Arrange the GCash payout manually. The app does not send money.</p>}
+          </div>}
+          {!claim.claimed&&<><label className="opt"><input type="checkbox" disabled={busy} checked={numberConfirmed} onChange={e=>setNumberConfirmed(e.target.checked)}/><span>The player’s business number matches the number above.</span></label>
+            <button className="btn spark" disabled={busy||!numberConfirmed||!summary?.inventory.remaining} onClick={fulfill}>{busy?'Drawing…':'Fulfill'}</button>
+            <p className="small muted">Fulfill draws and records one prize, then reveals it on the wheel. Hand the saved prize to the player.</p>
+            {summary?.inventory.remaining===0&&<p className="err">No prizes remain. Set quantities in Prize inventory to restock.</p>}
+          </>}
         </div>}
         <span className="eyebrow">Waiting to claim ({summary?.pending.length??'–'})</span><div className="pend">{summary?.pending.length?summary.pending.map(p=><button key={p.code} disabled={busy} onClick={()=>find(p.code)}><span>{p.name}<span className="muted"> · {p.company}</span></span><code>{p.code}</code></button>):<p className="small muted">{summary?'Nobody waiting.':'Loading claims…'}</p>}</div>
-        {k&&<p className="small muted">{k.awardedTotal} of {k.cap} rewards reserved · {k.waitingForDrop} finishers waiting for the next drop</p>}
-      </section><section className="panel"><h2>Hot leads</h2><p className="small muted">Planning a campaign in the next six months, or interested in a Predikta simulation.</p><label className="f">Search leads<input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Name, company, email or role"/></label><div className="tscroll"><table className="leads"><thead><tr><th>Player</th><th>Company · role</th><th>Challenge</th><th>Interest</th></tr></thead><tbody>{leads.map((p,i)=><tr key={`${p.email}-${i}`}><td data-label="Player"><b>{p.name}</b><br/><span className="small muted">{p.email}</span></td><td data-label="Company · role">{p.company}<br/><span className="small muted">{p.role}</span></td><td data-label="Challenge">{p.challenge}</td><td data-label="Interest">{p.planning==='Yes'&&<span className="flag hot">Campaign in 6 mo</span>}{p.wantsSim&&<span className="flag sim">Wants simulation</span>}{p.claimed&&<span className="flag cl">Fulfilled</span>}</td></tr>)}</tbody></table></div>{!leads.length&&<p className="small muted">{summary?'No leads match yet.':'Loading leads…'}</p>}</section></div>
+        {summary&&<p className="small muted">{fmt(summary.inventory.fulfilled)} prizes fulfilled · {fmt(summary.inventory.remaining)} remaining for the event</p>}
+      </section><section className="panel"><h2>Hot leads</h2><p className="small muted">Planning a campaign in the next six months, or interested in a Predikta simulation.</p><label className="f">Search leads<input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Name, company, email or role"/></label><div className="tscroll"><table className="leads"><thead><tr><th>Player</th><th>Company · role</th><th>Challenge</th><th>Interest</th></tr></thead><tbody>{leads.map((p,i)=><tr key={`${p.email}-${i}`}><td data-label="Player"><b>{p.name}</b><br/><span className="small muted">{p.email}</span></td><td data-label="Company · role">{p.company}<br/><span className="small muted">{p.role}</span></td><td data-label="Challenge">{p.challenge||'—'}</td><td data-label="Interest">{p.planning==='Yes'&&<span className="flag hot">Campaign in 6 mo</span>}{p.wantsSim&&<span className="flag sim">Wants simulation</span>}{p.claimed&&<span className="flag cl">Fulfilled</span>}</td></tr>)}</tbody></table></div>{!leads.length&&<p className="small muted">{summary?'No leads match yet.':'Loading leads…'}</p>}</section></div>
     </main></div>;
 }

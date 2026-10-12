@@ -50,6 +50,8 @@ export interface ContentPayload {
   consentVersion: string;
   audiences: PublicAudience[];
   joinUrl: string;
+  contactUrl: string;
+  privacyPolicyUrl: string | null;
 }
 
 export interface RoundResult {
@@ -81,9 +83,30 @@ export interface Reveal {
   wallet: number;
 }
 
-export type GcState =
-  | { status: 'awarded'; code: string; claimed: boolean; mobileMasked: string }
-  | { status: 'waiting'; nextDropAt: number | null; mobileMasked: string };
+export interface Prize { id: string; name: string; amountPhp: number | null }
+export interface PrizeStock extends Prize { total: number; fulfilled: number; remaining: number }
+export interface PrizeInventory {
+  revision: number;
+  items: PrizeStock[];
+  total: number;
+  fulfilled: number;
+  remaining: number;
+  cashRemainingPhp: number;
+}
+export interface RewardState {
+  code: string | null;
+  claimed: boolean;
+  mobileMasked: string;
+  prize: Prize | null;
+  legacy: boolean;
+}
+export interface PrizeWheelResult { items: PrizeStock[]; prizeId: string }
+export interface StaffClaim {
+  name: string; company: string; role: string; mobile: string;
+  score: number | null; persona: string | null; code: string;
+  claimed: boolean; claimedAt: number | null; prize: Prize | null; legacy: boolean;
+}
+export interface FulfillResult extends StaffClaim { replayed: boolean; wheel: PrizeWheelResult | null }
 
 export interface Me {
   content: ContentPayload;
@@ -99,17 +122,11 @@ export interface Me {
   correct: number | null;
   persona: Persona | null;
   wantsSim: boolean;
-  gc: GcState | null;
-}
-
-export interface GcStatus {
-  leftToday: number;
-  availableNow: number;
-  nextDropAt: number | null;
+  reward: RewardState | null;
 }
 
 export interface Board {
-  gc: GcStatus;
+  prizes: PrizeInventory;
   stat: { picks: number; matches: number; pct: number | null };
   leaderboard: { id: string; name: string; score: number }[];
 }

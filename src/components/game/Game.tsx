@@ -2,13 +2,16 @@
 // The game, shared by the player phone and the big TV. Only the layout differs (see tv.css).
 // The server is authoritative: we send pick + confidence + time, it returns the reveal and points.
 import { useEffect, useRef, useState } from 'react';
-import type { ConfIdx, ContentPayload, Me, Reveal, Side } from '../../shared/types';
+import type { Board, ConfIdx, ContentPayload, Me, PrizeInventory, Reveal, Side } from '../../shared/types';
 import { CONF, PERSONAS, ROUND_SECS } from '../../shared/rules';
-import { CHALLENGES, INDUSTRIES, PLANNING, SIGNUP_LIMITS, normalizeMobile, validateSignup, type SignupErrors, type SignupInput } from '../../shared/validation';
+import { CHALLENGES, PLANNING, SIGNUP_LIMITS, normalizeMobile, validateSignup, type SignupErrors, type SignupInput } from '../../shared/validation';
 import { api, ApiError } from '../../lib/api';
-import { fmt, manilaTime } from '../../lib/hooks';
+import { fmt } from '../../lib/hooks';
 import { AdCard, Brand, Dots, Qr, SplitBar, Wallet } from './bits';
 import { MobileInput } from './MobileInput';
+import { IndustrySelect } from './IndustrySelect';
+import { PhoneLanding } from './PhoneLanding';
+import { PRIZE_POOL_VALUE_PHP } from '@/shared/prizes';
 
 export type Variant = 'phone' | 'tv';
 type Screen = 'landing' | 'signup' | 'howto' | 'audience' | 'round' | 'reveal' | 'results' | 'claim';
@@ -63,12 +66,13 @@ const TV_IDLE_MS = 90_000;
 interface Props {
   variant: Variant;
   content: ContentPayload;
-  gcLeftToday: number | null;
+  prizes: PrizeInventory | null;
+  landingBoard?: Board | null;
   onPlayer?: (id: string | null) => void;
   onAccessDenied?: () => void;
 }
 
-export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, onAccessDenied }: Props) {
+export function Game({ variant, content: initialContent, prizes, landingBoard, onPlayer, onAccessDenied }: Props) {
   const [s, setState] = useState<State>(fresh);
   const ref = useRef<State>(s);
   const screenEl = useRef<HTMLDivElement>(null);
@@ -146,7 +150,7 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
 
   async function submitSignup(form: SignupInput) {
     if (ref.current.busy) return;
-    const { value, errors } = validateSignup(form as unknown as Record<string, unknown>);
+    const { value, errors } = validateSignup(form as unknown as Record<string, unknown>, variant);
     if (Object.keys(errors).length) {
       patch({ form, errors });
       focusSignupError(errors);
@@ -287,7 +291,7 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
       const me = await call<Me>('/api/me');
       patch({ me, wallet: me.wallet });
       onPlayer?.(me.id);
-      if (me.finished) return go(me.gc?.status === 'awarded' ? 'claim' : 'results');
+      if (me.finished) return go('claim');
       if (me.startedRound) return startRound(me.startedRound.idx);
       if (me.rounds.length === 3) return finish();
       if (me.rounds.length > 0) return sendLock(me.rounds.length - 1, {}); // already locked: returns the stored reveal
@@ -335,12 +339,12 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
     return () => clearInterval(id);
   }, [s.screen, s.locked, s.r]);
 
-  // Claim screen: watch for staff marking the GC claimed.
+  // Claim screen: watch for staff recording the prize.
   useEffect(() => {
-    if (s.screen !== 'claim' || s.me?.gc?.status !== 'awarded' || s.me.gc.claimed) return;
+    if (s.screen !== 'claim' || !s.me?.reward || s.me.reward.claimed) return;
     const id = setInterval(() => refreshMe(), 5000);
     return () => clearInterval(id);
-  }, [s.screen, s.me?.gc?.status, s.me?.gc?.status === 'awarded' && s.me.gc.claimed]);
+  }, [s.screen, s.me?.reward?.claimed]);
 
   // TV: back to the attract screen when a walk-up player leaves mid-game.
   useEffect(() => {
@@ -384,6 +388,7 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
   const round = audience?.rounds[s.r];
 
   function Landing() {
+    if (variant === 'phone') return <PhoneLanding content={content} board={landingBoard} />;
     return (
       <>
         <div className="hero">
@@ -399,13 +404,13 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
         </div>
         <div className="facts">
           <div className="fact"><b>3</b><span>rounds</span></div>
-          <div className="fact"><b>~3</b><span>minutes</span></div>
-          <div className="fact"><b>₱</b><span>GCash GC</span></div>
+          <div className="fact"><b>3</b><span>minutes</span></div>
+          <div className="fact merch-fact"><b>Win</b><span>AdSpark Merch</span></div>
         </div>
-        <div className="gcleft">
-          <b>{gcLeftToday ?? '–'}</b>
-          <span>GCash GCs left today. Finish all rounds to qualify, while supplies last.</span>
+        <div className="gcleft prize-value-banner">
+          <span><b>PHP {fmt(PRIZE_POOL_VALUE_PHP)}</b> Worth of Prizes to be given away</span>
         </div>
+        <p className="small muted" style={{margin:0}}>Finish all 3 rounds to qualify, while supplies last.{prizes?.remaining === 0 && ' Prizes currently unavailable.'}</p>
         <div className="spacer" />
         <button className="btn spark" disabled={s.busy || !!s.token} onClick={() => go('signup')}>
           {s.token ? 'Resuming your game…' : variant === 'tv' ? 'Tap to play here' : 'Start playing'}
@@ -456,7 +461,7 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
         <form key={s.formKey} onSubmit={onSubmit} noValidate aria-busy={s.busy} onChange={clearFieldError} onPaste={clearFieldError}>
           <label className="f">Full name<input name="name" {...fieldAttrs('name')} maxLength={SIGNUP_LIMITS.name} defaultValue={f.name} autoComplete="name" />{e.name && <span className="err" id="signup-name-error">{e.name}</span>}</label>
           <label className="f">
-            Mobile number (GCash)
+            {variant === 'tv' ? 'Business Number' : 'Mobile number'}
             <MobileInput name="mobile" {...fieldAttrs('mobile')} autoComplete="tel" placeholder="09171234567" defaultValue={f.mobile} />
             {e.mobile && <span className="err" id="signup-mobile-error">{e.mobile}</span>}
           </label>
@@ -465,14 +470,18 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
             <label className="f">Company<input name="company" {...fieldAttrs('company')} maxLength={SIGNUP_LIMITS.company} autoComplete="organization" defaultValue={f.company} />{e.company && <span className="err" id="signup-company-error">{e.company}</span>}</label>
             <label className="f">Role<input name="role" {...fieldAttrs('role')} maxLength={SIGNUP_LIMITS.role} autoComplete="organization-title" defaultValue={f.role} />{e.role && <span className="err" id="signup-role-error">{e.role}</span>}</label>
           </div>
-          <label className="f">
-            Industry
-            <select name="industry" {...fieldAttrs('industry')} defaultValue={f.industry ?? ''}>
-              <option value="">Choose…</option>
-              {INDUSTRIES.map((o) => <option key={o}>{o}</option>)}
-            </select>
+          {variant === 'phone' && <>
+          <div className="f industry-field">
+            <label htmlFor="signup-industry">Industry</label>
+            <IndustrySelect {...fieldAttrs('industry')} defaultValue={f.industry ?? ''} onChange={() => {
+              if (ref.current.errors.industry) {
+                const errors = { ...ref.current.errors };
+                delete errors.industry;
+                patch({ errors });
+              }
+            }} />
             {e.industry && <span className="err" id="signup-industry-error">{e.industry}</span>}
-          </label>
+          </div>
           <fieldset disabled={s.busy}>
             <legend>Biggest campaign challenge?</legend>
             {CHALLENGES.map((c) => (
@@ -491,16 +500,19 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
             </div>
             {e.planning && <span className="err" id="signup-planning-error">{e.planning}</span>}
           </fieldset>
+          </>}
           <label className="opt">
             <input type="checkbox" name="consent" {...fieldAttrs('consent')} defaultChecked={f.consent} />
-            <span>{content.consentText} <b>(Required)</b></span>
+            <span>{content.consentText} <b>(Required)</b>{content.privacyPolicyUrl && <> <a className="linkish" href={content.privacyPolicyUrl} target="_blank" rel="noopener noreferrer">Privacy policy</a></>}</span>
           </label>
           {e.consent && <span className="err" id="signup-consent-error">{e.consent}</span>}
+          {variant === 'phone' && <>
           <label className="opt">
             <input type="checkbox" name="optin" {...fieldAttrs('optin')} defaultChecked={f.optin} />
             <span>Send me AdSpark and Predikta updates. (Optional)</span>
           </label>
           {e.optin && <span className="err" id="signup-optin-error">{e.optin}</span>}
+          </>}
           <button className="btn spark" type="submit" disabled={s.busy}>{s.busy ? 'Saving…' : 'Continue'}</button>
         </form>
       </>
@@ -672,52 +684,38 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
           </button>
         </div>
         <button className="btn spark" onClick={() => go('claim')}>
-          {me.gc?.status === 'awarded' ? 'Claim my GCash GC' : 'See GC status'}
+          Claim my prize
         </button>
       </>
     );
   }
 
   function Claim() {
-    const gc = s.me?.gc;
-    if (!gc) return null;
-    if (gc.status === 'waiting') {
-      return (
-        <>
-          <div className="claim">
-            <h2 style={{ fontSize: '24px' }}>This drop is fully claimed</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              Your score is saved.{' '}
-              {gc.nextDropAt
-                ? `Next GC drop at ${manilaTime(gc.nextDropAt)}. Come back then and tap the button below.`
-                : 'All GCs for the event have been given out. Thank you for playing!'}
-            </p>
-            {gc.nextDropAt && <button className="btn" disabled={s.busy} onClick={() => refreshMe(true)}>Check again</button>}
-          </div>
-          <div className="spacer" />
-          {variant === 'tv' && <button className="btn soft" onClick={reset}>Next player</button>}
-        </>
-      );
-    }
-    return (
-      <>
-        <div className="claim">
-          <span className="chip">Manual fulfillment · booth staff</span>
-          <span className="eyebrow">Show this to booth staff</span>
-          <h2 style={{ fontSize: '24px' }}>Your reward is reserved</h2>
-          <Qr text={gc.code} label={`Claim QR code for ${gc.code}`} />
-          <span className="code">{gc.code}</span>
-          <span className="small muted">GCash number: {gc.mobileMasked}. Staff will arrange your reward.</span>
-          {gc.claimed ? (
-            <span className="status done"><i />Fulfillment recorded</span>
-          ) : (
-            <span className="status wait"><i />Waiting for staff</span>
-          )}
-        </div>
-        <div className="spacer" />
-        {variant === 'tv' && <button className="btn soft" onClick={reset}>Next player</button>}
-      </>
-    );
+    const reward = s.me?.reward;
+    if (!reward) return null;
+    return <>
+      <div className="claim">
+        <span className="eyebrow">Show this to booth staff</span>
+        <h2 style={{ fontSize: '24px' }}>{reward.claimed ? 'Your prize' : 'Claim your prize'}</h2>
+        {reward.code ? <>
+          <Qr text={reward.code} label={`Claim QR code for ${reward.code}`} />
+          <span className="code">{reward.code}</span>
+        </> : <button className="btn" disabled={s.busy} onClick={() => refreshMe(true)}>Get claim code</button>}
+        <span className="small muted">Business number: {reward.mobileMasked}</span>
+        {reward.prize && <h3 className="prize-winner">{reward.prize.name}</h3>}
+        {reward.claimed ? <>
+          <span className="status done"><i />Fulfillment recorded</span>
+          {reward.legacy && <span className="small muted">Previously fulfilled · historical record</span>}
+        </> : <>
+          <span className="status wait"><i />Waiting for staff</span>
+          <p className="small muted" style={{margin:0}}>Staff will draw your prize. Available while supplies last.</p>
+          {prizes?.remaining === 0 && <p className="small muted" style={{margin:0}}>Prizes are currently out of stock. Your score and claim code are saved.</p>}
+        </>}
+        <p className="small">Want to know more? <a className="linkish" href={content.contactUrl} target="_blank" rel="noopener noreferrer">Click here</a></p>
+      </div>
+      <div className="spacer" />
+      {variant === 'tv' && <button className="btn soft" onClick={reset}>Next player</button>}
+    </>;
   }
 
   const SCREENS: Record<Screen, () => React.JSX.Element | null> = {
@@ -726,15 +724,16 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
   };
   const Body = SCREENS[s.screen];
   const modalRound = s.modal && round;
+  const phoneLanding = variant === 'phone' && s.screen === 'landing';
 
   return (
-    <div className={`game ${variant === 'phone' ? 'phoneapp' : ''}`} role={variant === 'phone' ? 'main' : undefined}>
+    <div className={`game ${variant === 'phone' ? 'phoneapp' : ''}${phoneLanding ? ' phone-landing' : ''}`} role={variant === 'phone' ? 'main' : undefined}>
       <div className="pbar">
         <span className="who">
           <Brand />
           {variant === 'tv' && <span>· playing on the big screen</span>}
         </span>
-        <Wallet value={s.wallet} />
+        {phoneLanding ? <span className="play-event">Digicon 2026</span> : <Wallet value={s.wallet} />}
       </div>
       {s.net && (
         <div className="netbar" role="status">
@@ -747,6 +746,12 @@ export function Game({ variant, content: initialContent, gcLeftToday, onPlayer, 
       <div className="screen" data-s={s.screen} ref={screenEl} inert={!!s.modal}>
         {Body()}
       </div>
+      {phoneLanding && <footer className="play-actionbar">
+        <button type="button" className="btn spark" disabled={s.busy || !!s.token} onClick={() => go('signup')}>
+          {s.token ? 'Resuming your game…' : <><span>Take the challenge</span><span aria-hidden="true">→</span></>}
+        </button>
+        <p>One play per mobile number.</p>
+      </footer>}
       {modalRound && (
         <div className="modal" aria-modal="true" role="dialog" aria-label={`Ad ${s.modal!.toUpperCase()} enlarged`} onClick={(e) => e.target === e.currentTarget && closeModal()}>
           <AdCard ad={modalRound[s.modal!]} brand={modalRound.brand} label={s.modal!.toUpperCase()} inert />

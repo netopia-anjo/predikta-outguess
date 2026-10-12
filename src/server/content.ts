@@ -3,10 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Audience, ContentPayload } from '../shared/types';
 
-export const CONSENT_VERSION = 'demo-consent-v1';
-export const CONSENT_TEXT = 'I agree to AdSpark and Predikta processing my registration details and game responses to operate this booth game and arrange my GCash reward. Marketing updates are optional and require separate consent.';
+export const CONSENT_VERSION = 'placeholder-prize-consent-v2';
+export const CONSENT_TEXT = 'I agree to AdSpark and Predikta processing my registration details and game responses to operate this booth game and arrange my prize. Marketing updates require separate consent.';
 export const manilaDate = (now: number) => new Date(now + 8 * 3600_000).toISOString().slice(0, 10);
 export const manilaStart = (now: number) => Date.parse(`${manilaDate(now)}T00:00:00+08:00`);
+/** Legacy schedule validation, retained for historical imports; prize seeding no longer reads this. */
 export interface Schedule { totalCap: number; days: string[]; blocks: { start: string; end: string; allocation: number }[] }
 export interface StoredContent { id: string; audiences: Audience[]; respondents: string[] }
 export function validateContent(audiences: Audience[], respondents: string[]) {
@@ -36,20 +37,20 @@ export function scheduleRows(s: Schedule) {
   if (rows.reduce((n,r) => n+r.allocation,0) > s.totalCap) throw new Error('GC schedule exceeds the cap.');
   return rows;
 }
-export async function loadSeed(demo: boolean, now = Date.now()) {
+export async function loadSeed(demo: boolean) {
   const read = async (file: string) => JSON.parse(await readFile(join(process.cwd(), 'content', file), 'utf8'));
   const audiences = await read('audiences.json') as Audience[];
   const respondents = await read('respondents.json') as string[];
   validateContent(audiences, respondents);
   const id = createHash('sha256').update(JSON.stringify({ audiences, respondents })).digest('hex');
-  const schedule = demo ? { totalCap: 300, days: [manilaDate(now)], blocks: [{ start: '00:00', end: '23:59', allocation: 100 }] } : await read('gc-schedule.json') as Schedule;
-  scheduleRows(schedule);
   const approval = demo ? { consentVersion: CONSENT_VERSION, consentText: CONSENT_TEXT } : await read('approval.json');
-  if (!demo && (!approval.approved || !approval.consentVersion || !approval.consentText || !approval.contentApproved || !approval.scheduleConfirmed || audiences.some(a => a.rounds.some(r => !r.a.image || !r.b.image)))) throw new Error('Production seed requires approved content, consent and confirmed schedule in content/approval.json.');
+  if (!demo && (!approval.approved || !approval.consentVersion || !approval.consentText || !approval.contentApproved || audiences.some(a => a.rounds.some(r => !r.a.image || !r.b.image)))) throw new Error('Production seed requires approved content and consent in content/approval.json.');
   if (!demo) for (const a of audiences) for (const r of a.rounds) for (const ad of [r.a,r.b]) await readFile(join(process.cwd(), 'public', ad.image!.slice(1)));
-  return { content: { id, audiences, respondents }, schedule, consentVersion: approval.consentVersion as string, consentText: approval.consentText as string };
+  return { content: { id, audiences, respondents }, consentVersion: approval.consentVersion as string, consentText: approval.consentText as string };
 }
-export function publicContent(c: StoredContent, publicUrl: string, demo: boolean, consentText: string, consentVersion: string): ContentPayload {
+export function publicContent(c: StoredContent, publicUrl: string, demo: boolean, consentText: string, consentVersion: string,
+  links: { contactUrl?: string; privacyPolicyUrl?: string | null } = {}): ContentPayload {
   return { version: c.id, demo, consentText, consentVersion, joinUrl: `${publicUrl}/play`,
+    contactUrl: links.contactUrl ?? 'https://www.adspark.ph/get-in-touch', privacyPolicyUrl: links.privacyPolicyUrl ?? null,
     audiences: c.audiences.map(a => ({ ...a, rounds: a.rounds.map(r => ({ brand: r.brand, product: r.product, objective: r.objective, a: r.a, b: r.b })) })) };
 }
