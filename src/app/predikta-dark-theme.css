@@ -1,0 +1,333 @@
+/* ==========================================================================
+   Outguess the Crowd · Predikta × AdSpark dark theme
+   Based on the supplied ops-restyle/predikta-dark-theme.css reference.
+   Imported after globals.css in the root layout to retain the base layouts
+   and responsive phone, tablet and TV rules.
+   ========================================================================== */
+
+/* ---------- 1. Font: Outfit replaces Bricolage Grotesque + DM Sans ---------- */
+/* Outfit is self-hosted at /public/fonts/outfit.ttf with its SIL OFL license. */
+@font-face {
+  font-family: Outfit;
+  src: url(/fonts/outfit.ttf) format("truetype");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+/* ---------- 2. Tokens ---------- */
+/* The old token names are kept and remapped, so any rule not listed below
+   still picks up the dark theme. WATCH OUT: on dark, two tokens flip meaning:
+     --ink  was "dark navy" (text AND dark blocks) -> now TEXT (white)
+     --card was "white surface"                    -> now a translucent glass surface
+   Every place that used --ink as a BACKGROUND is overridden further down. */
+:root {
+  color-scheme: dark;
+
+  /* new palette */
+  --bg0: #040A2A; --bg1: #071447; --bg2: #0B2072;
+  --glass: rgba(16, 30, 100, .55);
+  --glass-2: rgba(28, 48, 140, .5);
+  --edge: rgba(110, 150, 255, .26);
+  --edge-hi: rgba(110, 210, 255, .7);
+  --shade: 0 10px 34px rgba(2, 6, 30, .45);
+  --faint: #7D8AC6;
+  --cyan: #3FE0FF; --blue: #2F6BFF; --violet: #8B5CF6; --purple: #B18CFF;
+  --magenta: #FF3DA8; --pink: #FF6FB5; --red: #FF4B3E;
+  --grad-cta: linear-gradient(95deg, #FF3DA8 0%, #8B5CF6 52%, #2F6BFF 100%);
+  --grad-head: linear-gradient(92deg, #4FE6FF 0%, #7CC0FF 100%);
+  --grad-cyan: linear-gradient(135deg, #4FE6FF, #2F6BFF);
+  --grad-violet: linear-gradient(135deg, #C9A2FF, #8B5CF6);
+  --grad-magenta: linear-gradient(135deg, #FF6FB5, #FF3DA8 60%, #C026D3);
+
+  /* old tokens -> new values */
+  --paper: var(--bg1);
+  --card: var(--glass);
+  --ink: #FFFFFF;
+  --muted: #AEBBEA;
+  --line: var(--edge);
+  --wash: rgba(255, 255, 255, .05);
+  --spark: #FF3DA8;                         /* orange -> magenta (selection, urgency) */
+  --spark-soft: rgba(255, 61, 168, .14);
+  --pred: #3FE0FF;                          /* teal -> cyan (correct, live, accents) */
+  --pred-soft: rgba(63, 224, 255, .12);
+  --coin: #3FE0FF;                          /* gold is retired; points are cyan */
+  --coin-soft: rgba(63, 224, 255, .1);
+  --bad: #FF5C93;
+  --bad-soft: rgba(255, 61, 168, .14);
+  --tv: var(--bg1); --tv2: var(--glass); --tvline: var(--edge); --tvmuted: #AEBBEA;
+  --display: Outfit, "Segoe UI", system-ui, sans-serif;
+  --body: Outfit, "Segoe UI", system-ui, sans-serif;
+}
+
+/* ---------- 3. Page background ---------- */
+html {
+  background-color: var(--bg1);
+  background:
+    radial-gradient(900px 520px at 88% -8%, rgba(47, 107, 255, .55), transparent 62%),
+    radial-gradient(700px 480px at -12% 108%, rgba(192, 38, 211, .32), transparent 62%),
+    radial-gradient(600px 400px at 50% 50%, rgba(63, 224, 255, .07), transparent 70%),
+    linear-gradient(165deg, var(--bg0) 0%, var(--bg1) 48%, var(--bg2) 100%);
+  background-attachment: fixed;
+}
+body { background: transparent; color: #fff; }
+body::before { /* dotted texture from the brand boards */
+  content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background-image: radial-gradient(rgba(150, 180, 255, .22) 1px, transparent 1.3px);
+  background-size: 22px 22px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 75% 15%, #000, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 60% at 75% 15%, #000, transparent 75%);
+}
+#app { z-index: 1; }
+:focus-visible { outline-color: var(--cyan); }
+h1, h2, h3 { letter-spacing: -.01em; }
+
+/* ---------- 4. Shared pieces ---------- */
+.btn {
+  color: #fff; border: 1px solid var(--edge-hi);
+  background: linear-gradient(180deg, rgba(60, 110, 255, .45), rgba(30, 60, 180, .45));
+  box-shadow: 0 0 0 1px rgba(63, 224, 255, .08), 0 6px 22px rgba(47, 107, 255, .3);
+}
+.btn.spark { background: var(--grad-cta); color: #fff; border-color: transparent; box-shadow: 0 6px 26px rgba(255, 61, 168, .35), 0 6px 26px rgba(47, 107, 255, .3); }
+.btn.pred { background: var(--grad-cyan); color: #04102E; border-color: transparent; box-shadow: 0 6px 24px rgba(63, 224, 255, .35); }
+.btn.soft { background: rgba(255, 255, 255, .06); color: #fff; border-color: var(--edge); box-shadow: none; }
+.btn:disabled { box-shadow: none; }
+.ghost { background: rgba(255, 255, 255, .05); border-color: var(--edge); color: #fff; }
+.ghost:hover { border-color: var(--edge-hi); }
+.linkish { color: var(--cyan); }
+.grad { background: var(--grad-head); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.glass { background: var(--glass); border-color: var(--edge); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), var(--shade); }
+.chip { background: rgba(63, 224, 255, .08); border-color: rgba(63, 224, 255, .3); color: #BDF3FF; }
+.loading { color: var(--muted); }
+
+/* Logos now sit straight on the dark page (no navy chip). Use the white/light logo files. */
+.brandmark { background: transparent; }
+.brandmark .x, .pbar .brandmark .x { color: var(--faint); }
+.tagline .pk { color: var(--red); }
+.tagline .as { color: var(--cyan); }
+
+/* Header bars. Sticky bars need a near-opaque background so content scrolling under them stays readable. */
+.pbar { border-bottom-color: var(--edge); }
+.phoneapp { background: transparent; }
+.phoneapp .pbar { background: rgba(4, 10, 42, .82); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.pbar .who span { color: var(--faint); }
+.pbar .who > span:not(.brandmark) { color: var(--muted); }
+
+.wallet { background: rgba(63, 224, 255, .1); border: 1px solid rgba(63, 224, 255, .45); color: #CFF7FF; box-shadow: 0 0 14px rgba(63, 224, 255, .2); }
+.wallet i { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+@keyframes pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.22); background: rgba(63, 224, 255, .3); box-shadow: 0 0 28px rgba(63, 224, 255, .7); }
+  to { transform: scale(1); }
+}
+
+/* Forms */
+label.f input, label.f select, .find input { background: rgba(4, 10, 42, .55); color: #fff; border-color: var(--edge); }
+label.f input::placeholder, .find input::placeholder { color: var(--faint); }
+label.f input:focus, label.f select:focus, .find input:focus { outline-color: var(--cyan); border-color: var(--cyan); }
+select option { background: var(--bg1); color: #fff; }
+.industry-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.industry-select { position: relative; min-width: 0; }
+.industry-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 10px 11px; border: 1px solid var(--edge); border-radius: 10px; background: rgba(4, 10, 42, .55); color: #fff; font-size: 16px; font-weight: 400; text-align: left; }
+.industry-select-trigger svg { flex: none; color: var(--cyan); transition: transform .15s; }
+.industry-select-trigger[aria-expanded=true] svg { transform: rotate(180deg); }
+.industry-select-trigger:focus-visible, .industry-select-trigger[aria-expanded=true] { border-color: var(--cyan); outline: 2px solid var(--cyan); outline-offset: 1px; }
+.industry-select-trigger[aria-invalid=true] { border-color: var(--bad); background: rgba(255, 61, 168, .1); }
+.industry-select-trigger:disabled { opacity: .7; cursor: wait; }
+.industry-select-menu { position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 3; overflow-y: auto; overscroll-behavior: contain; padding: 6px; border: 1px solid var(--edge-hi); border-radius: 12px; background: #0a174b; box-shadow: var(--shade), 0 0 20px rgba(63, 224, 255, .15); }
+.industry-select-menu.above { top: auto; bottom: calc(100% + 6px); }
+.industry-select-menu button { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #fff; font-size: 15px; font-weight: 400; text-align: left; }
+.industry-select-menu button[aria-selected=true] { border-color: rgba(63, 224, 255, .4); background: rgba(63, 224, 255, .12); color: #bdf3ff; }
+.industry-select-menu button[data-selected=true] { color: var(--cyan); font-weight: 600; }
+@media (min-width: 1100px) and (min-aspect-ratio: 4/3) {
+  .tvgame .industry-field { font-size: 1cqw; }
+  .tvgame .industry-select-trigger { font-size: 1.25cqw; padding: .7cqw .8cqw; }
+  .tvgame .industry-select-menu button { font-size: 1.1cqw; }
+}
+fieldset { background: rgba(4, 10, 42, .3); }
+.opt { color: #DCE3FF; }
+.opt input { accent-color: var(--magenta); }
+input[aria-invalid=true], select[aria-invalid=true] { border-color: var(--bad); background: rgba(255, 61, 168, .1); }
+.errbox { color: #FFC2DD; border: 1px solid rgba(255, 61, 168, .45); }
+.netbar { background: rgba(255, 61, 168, .16); border-bottom-color: rgba(255, 61, 168, .4); color: #FFD3E8; }
+.netbar button { background: var(--grad-cta); color: #fff; }
+.modal { background: rgba(3, 6, 28, .86); }
+.modal .desc { background: var(--glass-2); border: 1px solid var(--edge); }
+.modal .desc .eyebrow { color: var(--cyan); }
+
+/* ---------- 5. Player: landing ---------- */
+.hero {
+  background: linear-gradient(160deg, rgba(20, 40, 140, .75), rgba(8, 16, 70, .85));
+  color: #fff; border: 1px solid var(--edge);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), var(--shade);
+}
+.hero::after { /* thin cyan-to-magenta glowing edge */
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;
+  background: linear-gradient(120deg, rgba(63, 224, 255, .7), transparent 40%, transparent 60%, rgba(255, 61, 168, .6));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+}
+.hero h1 em { background: var(--grad-head); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero p { color: #CBD5FA; }
+.hero .eyebrow, .score .eyebrow { color: var(--cyan); }
+.hero .orb { background: radial-gradient(circle, rgba(63, 224, 255, .55), rgba(47, 107, 255, .15) 55%, transparent 70%); opacity: 1; filter: blur(4px); }
+.hero .orb.two { background: radial-gradient(circle, rgba(255, 61, 168, .85), rgba(139, 92, 246, .3) 60%, transparent 72%); opacity: 1; filter: blur(2px); }
+
+.fact { background: var(--glass); }
+.fact b { font-weight: 800; background: var(--grad-cyan); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.fact:nth-child(2) b { background-image: var(--grad-violet); }
+.fact:nth-child(3) b { background-image: var(--grad-magenta); }
+.gcleft { background: linear-gradient(90deg, rgba(255, 61, 168, .22), rgba(139, 92, 246, .14)); border: 1px solid rgba(255, 61, 168, .45); color: #FFE0F0; }
+.gcleft b { color: #fff; text-shadow: 0 0 14px rgba(255, 61, 168, .8); }
+
+/* ops landing extras */
+.phone-landing .play-facts span { color: var(--cyan); }
+.phone-landing .play-preview-badge { background: rgba(63, 224, 255, .1); color: var(--cyan); border: 1px solid rgba(63, 224, 255, .4); }
+.phone-landing .play-preview-ad { border-color: rgba(255, 255, 255, .1); }
+.phone-landing .play-versus { background: var(--bg1); color: #fff; border-color: var(--cyan); box-shadow: 0 0 14px rgba(63, 224, 255, .6); }
+.phone-landing .play-rewards { background: linear-gradient(90deg, rgba(255, 61, 168, .22), rgba(139, 92, 246, .14)); border-color: rgba(255, 61, 168, .45); }
+.phone-landing .play-rewards p { color: #FFD3E8; }
+.phone-landing .play-reward-icon { background: var(--grad-cta); color: #fff; box-shadow: 0 0 16px rgba(255, 61, 168, .5); }
+.phone-landing .play-leaders { border-bottom-color: var(--edge); }
+.phone-landing .play-actionbar { background: rgba(4, 10, 42, .9); border-top-color: var(--edge); box-shadow: 0 -10px 24px rgba(2, 6, 30, .5); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+
+/* ---------- 6. Player: how to play (01 / 02 / 03 gradient numerals) ---------- */
+.steps li { background: var(--glass); border: 1px solid var(--edge); align-items: center; }
+.steps li:before {
+  content: counter(s, decimal-leading-zero);
+  width: auto; height: auto; border-radius: 0;
+  font-family: var(--display); font-size: 28px; font-weight: 800; line-height: 1;
+  background: var(--grad-cyan); -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.steps li:nth-child(2):before { background-image: var(--grad-violet); }
+.steps li:nth-child(3):before { background-image: var(--grad-magenta); }
+.ptable th { color: var(--muted); font-weight: 600; }
+.ptable tbody tr:first-child td:not(:first-child) { color: var(--cyan); font-weight: 600; }
+
+/* ---------- 7. Player: audience cards (cyan / violet / magenta accent strip) ---------- */
+.aud { --acc: var(--cyan); background: var(--glass); color: #fff; overflow: hidden; transition: border-color .15s, box-shadow .15s; }
+.aud::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--acc); box-shadow: 0 0 12px var(--acc); }
+.aud:nth-of-type(2) { --acc: var(--purple); }
+.aud:nth-of-type(3) { --acc: var(--magenta); }
+.aud:hover, .aud:focus-visible { border-color: var(--acc); box-shadow: 0 0 22px color-mix(in srgb, var(--acc) 35%, transparent); }
+.aud .go { color: var(--acc); }
+
+/* ---------- 8. Player: round ---------- */
+.dots i { background: rgba(255, 255, 255, .14); }
+.dots i.on { background: var(--grad-cyan); box-shadow: 0 0 8px rgba(63, 224, 255, .6); }
+.brief { position: relative; overflow: hidden; background: var(--glass-2); border: 1px solid var(--edge); color: #fff; }
+.brief::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--grad-cta); }
+.brief .eyebrow { color: var(--cyan); }
+.brief span { color: #CBD5FA; }
+.timer .track { background: rgba(255, 255, 255, .08); border-color: transparent; }
+.timer .fill { background: var(--grad-cyan); box-shadow: 0 0 10px rgba(63, 224, 255, .7); }
+.timer .fill.low { background: var(--grad-magenta); box-shadow: 0 0 10px rgba(255, 61, 168, .8); }
+
+/* Ad cards keep their own art colours (they stand in for real creatives). Only the frames change. */
+.ad { box-shadow: 0 0 0 1px rgba(255, 255, 255, .08), 0 8px 24px rgba(0, 0, 0, .35); }
+.ad .lab { background: #fff; color: var(--bg1); box-shadow: 0 1px 4px rgba(0, 0, 0, .35); }
+.ad.sel { box-shadow: 0 0 0 2px var(--bg1), 0 0 0 4px var(--magenta), 0 0 26px rgba(255, 61, 168, .6); }
+.ad.win { box-shadow: 0 0 0 2px var(--bg1), 0 0 0 4px var(--cyan), 0 0 28px rgba(63, 224, 255, .6); }
+.ad.dim { opacity: .38; }
+.conf button { background: var(--glass); color: #fff; }
+.conf button[aria-pressed=true] { background: linear-gradient(160deg, rgba(139, 92, 246, .55), rgba(47, 107, 255, .45)); border-color: var(--purple); color: #fff; box-shadow: 0 0 18px rgba(139, 92, 246, .55); }
+.conf button[aria-pressed=true] span { color: #E4DAFF; }
+
+/* ---------- 9. Player: reveal ---------- */
+.verdict { border: 1px solid transparent; }
+.verdict.ok { background: rgba(63, 224, 255, .12); border-color: rgba(63, 224, 255, .5); box-shadow: 0 0 24px rgba(63, 224, 255, .18); }
+.verdict.no { background: rgba(255, 61, 168, .14); border-color: rgba(255, 61, 168, .45); }
+.verdict.ok h2 { color: var(--cyan); }
+.verdict.no h2 { color: var(--pink); }
+.split .eyebrow { color: var(--cyan); }
+.sbar { background: rgba(255, 255, 255, .06); }
+.sbar .w { background: var(--grad-cyan); color: #04102E; box-shadow: 0 0 18px rgba(63, 224, 255, .5); }
+.sbar .l { background: rgba(255, 255, 255, .08); color: var(--muted); }
+.insight div { background: var(--glass); border: 1px solid var(--edge); }
+.insight div:first-child b { color: var(--pink); }
+.bub { background: var(--glass-2); }
+.bub:nth-child(2) { background: linear-gradient(140deg, rgba(139, 92, 246, .45), rgba(47, 107, 255, .35)); border-color: rgba(177, 140, 255, .45); }
+
+/* ---------- 10. Player: results ---------- */
+.score { background: linear-gradient(160deg, rgba(20, 40, 140, .8), rgba(8, 16, 70, .85)); border: 1px solid var(--edge-hi); box-shadow: 0 0 30px rgba(63, 224, 255, .15), var(--shade); }
+.score .big { background: var(--grad-head); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.score .row span { background: rgba(63, 224, 255, .1); border: 1px solid rgba(63, 224, 255, .35); }
+.persona { background: linear-gradient(150deg, rgba(139, 92, 246, .35), rgba(192, 38, 211, .18)); border: 1px solid rgba(177, 140, 255, .5); }
+.persona .eyebrow { color: #D9C8FF; }
+.persona h3 { background: linear-gradient(92deg, #E3D3FF, #FF8FCB); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.recap td:nth-child(2) { color: var(--muted); }
+.ok-t { color: var(--cyan); }
+.no-t { color: var(--pink); }
+.toggle { background: rgba(63, 224, 255, .06); border-color: rgba(63, 224, 255, .6); color: #fff; }
+.toggle .box { border-color: var(--cyan); color: #04102E; font-weight: 800; }
+.toggle[aria-pressed=true] { border-style: solid; box-shadow: 0 0 18px rgba(63, 224, 255, .25); }
+.toggle[aria-pressed=true] .box { background: var(--cyan); }
+
+/* ---------- 11. Player: claim (QR stays dark-on-white so it scans) ---------- */
+.claim canvas { background: #fff; padding: 6px; border-color: transparent; box-shadow: 0 0 0 1px var(--edge-hi), 0 0 30px rgba(63, 224, 255, .35); }
+.claim .eyebrow { color: var(--cyan); }
+.code { text-shadow: 0 0 18px rgba(63, 224, 255, .6); }
+.status { border: 1px solid transparent; }
+.status.wait { background: rgba(255, 61, 168, .12); border-color: rgba(255, 61, 168, .45); color: #FFC9E3; }
+.status.done { background: rgba(63, 224, 255, .12); border-color: rgba(63, 224, 255, .5); color: var(--cyan); }
+.status i { box-shadow: 0 0 8px currentColor; }
+
+/* ---------- 12. Staff desk ---------- */
+.bar { border-bottom-color: var(--edge); }
+.kpi { background: var(--glass); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+.kpi b { font-weight: 800; background: var(--grad-cyan); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.kpi:nth-child(2) b { background-image: var(--grad-violet); }
+.kpi:nth-child(3) b { background-image: var(--grad-magenta); }
+.kpi:nth-child(4) b { background-image: linear-gradient(135deg, #FF8A80, var(--red)); }
+.panel { background: var(--glass); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), var(--shade); }
+.panel .eyebrow { color: var(--cyan); }
+.pcard { background: rgba(4, 10, 42, .45); border-color: var(--edge-hi); box-shadow: 0 0 22px rgba(63, 224, 255, .12); }
+.kv dd.num { color: var(--cyan); }
+.pend button { background: rgba(255, 255, 255, .04); color: #fff; }
+.pend button:hover { border-color: var(--edge-hi); }
+.pend button code { color: var(--cyan); }
+.flag { border: 1px solid transparent; }
+.flag.hot { background: rgba(255, 61, 168, .14); border-color: rgba(255, 61, 168, .5); color: #FFC4E2; }
+.flag.sim { background: rgba(63, 224, 255, .12); border-color: rgba(63, 224, 255, .5); color: var(--cyan); }
+.flag.cl { background: rgba(255, 255, 255, .06); border-color: var(--edge); color: var(--muted); }
+.toast { color: var(--cyan); }
+textarea.csv { background: rgba(4, 10, 42, .55); color: #fff; border-color: var(--edge); }
+.scanpanel video { background: #02061A; }
+
+/* ---------- 13. Big TV (rail + game panel) ---------- */
+.tvviewport { background: transparent; }
+.tvrail h1 em { background: var(--grad-head); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tvlock { background: var(--glass); border-color: var(--edge); }
+.tvcard { background: var(--glass); border-color: var(--edge); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 0 24px rgba(47, 107, 255, .12); }
+.tvcard .eyebrow { color: var(--cyan); }
+.tvqr { border-color: var(--edge-hi); }
+.tvqr canvas { background: #fff; box-shadow: 0 0 18px rgba(63, 224, 255, .45); }
+.tvgc { background: linear-gradient(95deg, rgba(255, 61, 168, .55), rgba(139, 92, 246, .45)); color: #fff; border: 1px solid rgba(255, 111, 181, .6); box-shadow: 0 0 24px rgba(255, 61, 168, .3); }
+.tvgc b { text-shadow: 0 0 12px rgba(255, 255, 255, .5); }
+.bigstat { background: var(--grad-head); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tvqr span, .tvsmall { color: var(--muted); }
+.lb td { border-bottom-color: var(--edge); }
+.lb td.r { color: var(--faint); }
+.lb tr:first-child td.s { color: var(--cyan); text-shadow: 0 0 10px rgba(63, 224, 255, .7); }
+.lb tr.me td { background: rgba(255, 61, 168, .22); }
+.tvlive i { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+.tvlive.off i { background: var(--magenta); box-shadow: 0 0 8px var(--magenta); }
+.tvgame { background: rgba(8, 18, 72, .55); color: #fff; border: 1px solid var(--edge); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 0 40px rgba(47, 107, 255, .18); }
+.tvgame .pbar { background: rgba(4, 10, 42, .55); }
+
+/* 16:9 big-screen board */
+@media (min-width: 1100px) and (min-aspect-ratio: 4/3) {
+  .tvviewport { background: #02061A; }
+  .tv {
+    background:
+      radial-gradient(60% 70% at 92% 0%, rgba(47, 107, 255, .55), transparent 65%),
+      radial-gradient(45% 60% at 0% 100%, rgba(192, 38, 211, .3), transparent 65%),
+      linear-gradient(165deg, var(--bg0), var(--bg1) 50%, var(--bg2));
+  }
+  .tv::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(150, 180, 255, .2) 1px, transparent 1.3px); background-size: 1.4cqw 1.4cqw;
+    -webkit-mask-image: radial-gradient(ellipse 60% 55% at 80% 10%, #000, transparent 75%);
+    mask-image: radial-gradient(ellipse 60% 55% at 80% 10%, #000, transparent 75%);
+  }
+  .tvgame .steps li:before { font-size: 2.4cqw; }
+}

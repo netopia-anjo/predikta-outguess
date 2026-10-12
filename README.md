@@ -2,6 +2,8 @@
 
 The AdSpark × Predikta booth game, rebuilt in Next.js with PostgreSQL. Players predict which of two ads an audience prefers across three timed rounds. The TV runs the same game with a live leaderboard, and the staff desk records manual reward fulfillment and exports leads.
 
+The phone, TV, and staff screens use the supplied Predikta × AdSpark dark theme: navy/blue gradient backgrounds, translucent cards, cyan highlights, magenta/violet/blue buttons, and self-hosted Outfit typography. `src/app/predikta-dark-theme.css` loads after `globals.css` in the root layout; keep that order when editing styles. Ad artwork retains its own colors and QR codes stay dark on white.
+
 | Route | Purpose |
 | --- | --- |
 | `/play` | Phone game, joined through the TV QR |

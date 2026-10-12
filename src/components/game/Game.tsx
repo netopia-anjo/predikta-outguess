@@ -4,11 +4,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Board, ConfIdx, ContentPayload, Me, Reveal, Side } from '../../shared/types';
 import { CONF, PERSONAS, ROUND_SECS } from '../../shared/rules';
-import { CHALLENGES, INDUSTRIES, PLANNING, SIGNUP_LIMITS, normalizeMobile, validateSignup, type SignupErrors, type SignupInput } from '../../shared/validation';
+import { CHALLENGES, PLANNING, SIGNUP_LIMITS, normalizeMobile, validateSignup, type SignupErrors, type SignupInput } from '../../shared/validation';
 import { api, ApiError } from '../../lib/api';
 import { fmt, manilaTime } from '../../lib/hooks';
 import { AdCard, Brand, Dots, Qr, SplitBar, Wallet } from './bits';
 import { MobileInput } from './MobileInput';
+import { IndustrySelect } from './IndustrySelect';
 import { PhoneLanding } from './PhoneLanding';
 
 export type Variant = 'phone' | 'tv';
@@ -468,14 +469,17 @@ export function Game({ variant, content: initialContent, gcLeftToday, landingBoa
             <label className="f">Company<input name="company" {...fieldAttrs('company')} maxLength={SIGNUP_LIMITS.company} autoComplete="organization" defaultValue={f.company} />{e.company && <span className="err" id="signup-company-error">{e.company}</span>}</label>
             <label className="f">Role<input name="role" {...fieldAttrs('role')} maxLength={SIGNUP_LIMITS.role} autoComplete="organization-title" defaultValue={f.role} />{e.role && <span className="err" id="signup-role-error">{e.role}</span>}</label>
           </div>
-          <label className="f">
-            Industry
-            <select name="industry" {...fieldAttrs('industry')} defaultValue={f.industry ?? ''}>
-              <option value="">Choose…</option>
-              {INDUSTRIES.map((o) => <option key={o}>{o}</option>)}
-            </select>
+          <div className="f industry-field">
+            <label htmlFor="signup-industry">Industry</label>
+            <IndustrySelect {...fieldAttrs('industry')} defaultValue={f.industry ?? ''} onChange={() => {
+              if (ref.current.errors.industry) {
+                const errors = { ...ref.current.errors };
+                delete errors.industry;
+                patch({ errors });
+              }
+            }} />
             {e.industry && <span className="err" id="signup-industry-error">{e.industry}</span>}
-          </label>
+          </div>
           <fieldset disabled={s.busy}>
             <legend>Biggest campaign challenge?</legend>
             {CHALLENGES.map((c) => (

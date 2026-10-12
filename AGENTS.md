@@ -22,7 +22,7 @@ Keep this file updated after meaningful changes to app behavior, scope, deployme
 
 ## Current implementation
 
-The app uses Next.js 16 App Router, React 19, TypeScript, and PostgreSQL through `pg`. Node.js 24+ is required. The Dockerfile packages Next.js standalone output. The deployment target is Cloud Run with Cloud SQL PostgreSQL; no production deployment has been completed in this session.
+The app uses Next.js 16 App Router, React 19, TypeScript, and PostgreSQL through `pg`. Node.js 24+ is required. The Dockerfile packages Next.js standalone output. The user is manually deploying to Cloud Run with Cloud SQL PostgreSQL and reported a deployed page returning 503 during database initialization; the agent has not inspected GCP.
 
 | Route | Current behavior |
 | --- | --- |
@@ -62,7 +62,9 @@ Important files and responsibilities:
 
 ## Branding and UI decisions
 
-- Preserve the current prototype-inspired palette: white cards, navy/ink heroes and TV surround, AdSpark orange `#FF5A1F`, teal accents, and gold reward panels. Fonts are self-hosted Bricolage Grotesque, DM Sans, and JetBrains Mono.
+- The user replaced the original light prototype palette with the supplied Predikta × AdSpark dark theme and nine screen references in `/Users/leandrozulaybar/Downloads/ops-restyle/`. Use deep navy/electric-blue gradient backgrounds, dotted texture, translucent blue cards, cyan highlights, violet confidence/persona cards, and magenta-to-violet-to-blue primary buttons. Outfit is self-hosted for headings/body; JetBrains Mono remains for scores/codes.
+- `src/app/predikta-dark-theme.css` adapts the supplied stylesheet and is imported after `globals.css` in the root layout. Keep the base responsive layouts in `globals.css` and the theme loaded last. `--ink` now means white text: use dark surfaces/gradients rather than `--ink` as a background. The browser viewport theme color is `#071447` with dark native controls. Ad creatives retain their individual colors, and QR codes retain dark-on-white contrast.
+- The shared phone/TV registration industry field uses `src/components/game/IndustrySelect.tsx` so its open menu follows the navy/cyan theme instead of the browser's native popup colors. It provides a labeled select-only combobox, arrow/Home/End navigation, Enter/Space/Tab selection, Escape cancellation, type-ahead, outside-click dismissal, a scrollable menu that can open upward, and a hidden industry input for the existing FormData/API contract. Keep the visible trigger named `industry` before the hidden input so first-error focus finds the interactive control; selection clears the industry's inline error.
 - Use the official AdSpark and Predikta image assets in `public/brand/` through the shared Brand component. Preserve logo colors, proportions, and legibility; do not replace them with generic icons or invented wordmarks. Source links are in `README.md`.
 - Do not display any mention of a demo in the app. Visible banners, labels, and sample autofill were removed. The existing `DEMO_MODE` environment flag remains an internal configuration setting.
 - Preserve phone, tablet, desktop, and landscape-TV responsiveness. Phones show the TV game before the rail; staff leads become cards on narrow screens. Large landscape TVs use the dedicated proportional layout. Keep inputs, validation errors, touch targets, scrolling, and modals usable at small widths/heights.
@@ -73,6 +75,10 @@ Important files and responsibilities:
 Recent fixes cover strict client/server signup validation, inline error feedback, disabled duplicate actions, corrupted saved-state recovery, stale-request guards, serialized polling, staff claim reset behavior, and TV PIN access.
 
 Focused checks after the audit and TV gate covered invalid registration in the browser/API, staff authorization, claim-code validation, saved-state recovery, TV PIN failures/unlock/refresh/lock/revocation, TV/staff token isolation, public phone access, and mobile layout. Lint and the production build passed at that point; this is historical verification, not a guarantee for later edits.
+
+After applying the dark theme, lint and the production build passed. Local HTTP checks confirmed `/play`, `/tv`, and `/staff` load the theme after the base CSS, expose the navy browser theme color, and serve Outfit and both logos successfully. Compiled CSS retains the white QR background. A browser surface was unavailable in this session, so visual comparison against the references remains unverified.
+
+After replacing the industry select, lint and the production build passed. Focused server-render checks verified empty/preselected industry values, the submitted hidden input, and validation/disabled attributes. Browser interaction checks remain unverified because no browser surface is available.
 
 The user explicitly requested no rigorous unit or end-to-end testing for this event. Use focused manual/browser/API checks for affected behavior and run lint, type checking, or a production build when appropriate. Existing unit/integration/e2e files do not make the full suites a required workflow. Do not add extensive test infrastructure or run broad suites by default. Documentation-only edits do not require an app build.
 
@@ -92,6 +98,10 @@ Use runtime environment variables for deployment, including `DB_PASSWORD`, `SESS
 ## Remaining event setup and scope
 
 Production activation is pending final AdSpark ad images, approved Predikta preference splits/reactions, confirmed event dates and allocations in `content/gc-schedule.json`, and approved consent text/version in `content/approval.json`. The current schedule is a placeholder; do not treat its dates as confirmed. Approval flags must reflect actual approvals, and final ad image paths must exist before production seeding. A public HTTPS deployment and final QR URL are also pending.
+
+During the user's manual GCP deployment, the production seed stopped because `content/approval.json` was absent. The file now exists as an unapproved copy of `approval.example.json`; consent placeholders and false approval flags still require actual event inputs. All 18 current ad entries lack image paths, so creating this file alone does not make production seeding ready. The user reported a deployed page returning `service_unavailable`; remote deployment status has not been inspected.
+
+The user explicitly authorized dummy/placeholder content for the initial deployment. The ignored `.env.production` now uses `DEMO_MODE=1`, which loads the existing ad illustrations/results and consent without requiring final image assets or asserting content approval. Cloud Run must also use `DEMO_MODE=1` to match this seed. This mode allocates 100 rewards on the Manila date when seeded, with an event cap of 300; it does not use the pending event schedule. No remote migration or seed has been executed by the agent. When moving to approved `DEMO_MODE=0` content, initialize a separate database as required by the seed's mode check; do not erase attendee data or merely flip the runtime flag. Continue to omit visible demo labels from the app.
 
 The agreed implementation excludes a gallery, separate analytics display, Crowd Showdown, SMS OTP, Google Sheets sync, live Predikta requests, automatic wallet/payout integration, and cross-device recovery. Do not introduce these without a new user request.
 
