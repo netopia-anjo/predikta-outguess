@@ -53,6 +53,7 @@ async function handle(req: NextRequest) {
       data = parts[5] === 'start' ? await service.start(player,Number(parts[4])) : await service.lock(player,Number(parts[4]),body);
     } else if (method === 'POST' && path === '/api/game/finish') data = await service.finish(player);
     else if (method === 'POST' && path === '/api/game/claim/retry') data = await service.retryAward(player);
+    else if (method === 'POST' && path === '/api/game/profile') data = await service.profile(player,body);
     else if (method === 'POST' && path === '/api/game/sim') data = await service.interest(player,body.wants);
     else if (method === 'POST' && ['/api/staff/login','/api/tv/login'].includes(path)) {
       const kind = path.startsWith('/api/tv/') ? 'tv' : 'staff';

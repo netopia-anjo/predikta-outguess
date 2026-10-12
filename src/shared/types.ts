@@ -122,6 +122,7 @@ export interface Me {
   correct: number | null;
   persona: Persona | null;
   wantsSim: boolean;
+  profile: { industry: string; challenge: string; planning: string; complete: boolean };
   reward: RewardState | null;
 }
 

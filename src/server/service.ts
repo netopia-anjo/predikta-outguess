@@ -5,7 +5,7 @@ import { transaction } from './db';
 import { signToken, verifyToken, pinMatches } from './auth';
 import { publicContent, manilaStart, type StoredContent } from './content';
 import { scoreRound, summarize, ROUND_MS } from '../shared/rules';
-import { CLAIM_CODE_PATTERN, normalizeClaimCode, validStaffPin, validateSignup } from '../shared/validation';
+import { CLAIM_CODE_PATTERN, normalizeClaimCode, validStaffPin, validateCampaign, validateSignup } from '../shared/validation';
 import type { Board, ConfIdx, FulfillResult, Me, Prize, PrizeInventory, PrizeStock, Reveal, RoundResult, Side, StaffClaim } from '../shared/types';
 import { MAX_PRIZE_QUANTITY, PRIZES } from '../shared/prizes';
 
@@ -18,6 +18,7 @@ interface Player {
   id: string; event_id: string; content_version: string; signup_key: string; signup_digest: string; name: string; mobile: string;
   audience_id: string | null; score: number | null; correct: number | null; persona: Me['persona']; finished_at: number | null;
   session_expires: number; wants_sim: boolean;
+  industry: string | null; challenge: string | null; planning: string | null;
 }
 interface EventRow { id: string; demo: boolean; total_cap: number; awarded_count: number; active_content: string; consent_text: string; consent_version: string }
 interface RoundRow { idx: number; started_at: number; locked_at: number | null; reveal: Reveal | null }
@@ -91,9 +92,11 @@ export class GameService {
     const claim = (await db.query('SELECT c.*,p.name AS prize_name,p.amount_php FROM claims c LEFT JOIN prize_catalog p ON p.id=c.prize_id WHERE c.player_id=$1',[p.id])).rows[0];
     const reward: Me['reward'] = !p.finished_at ? null : {code:claim?.code??null,claimed:!!claim?.claimed_at,
       mobileMasked:masked(p.mobile),prize:claim?prizeOf(claim):null,legacy:!!claim?.claimed_at&&!claim?.prize_id};
+    const profile = validateCampaign({...p});
     return { id: p.id, name: p.name, audienceId: p.audience_id, content: publicContent(c,this.options.publicUrl,e.demo,e.consent_text,e.consent_version,this.options),
       rounds: results, startedRound: open ? { idx: open.idx, elapsedMs: Math.max(0,this.now()-open.started_at) } : null,
-      wallet: results.reduce((n,r) => n+r.points+r.bonus,0), finished: !!p.finished_at, score: p.score, correct: p.correct, persona: p.persona, wantsSim: p.wants_sim, reward };
+      wallet: results.reduce((n,r) => n+r.points+r.bonus,0), finished: !!p.finished_at, score: p.score, correct: p.correct, persona: p.persona, wantsSim: p.wants_sim,
+      profile: {...profile.value, complete: !Object.keys(profile.errors).length}, reward };
   }
   async signup(body: Record<string,unknown>, key: string) {
     if (!/^[\w-]{32,100}$/.test(key)) throw new HttpError(400,'idempotency_key_required');
@@ -172,6 +175,7 @@ export class GameService {
   }
   private async award(p: Player, db: PoolClient) {
     if (!p.finished_at || (await db.query('SELECT 1 FROM claims WHERE player_id=$1',[p.id])).rowCount) return;
+    if (Object.keys(validateCampaign({...p}).errors).length) return;
     // A claim code identifies a completed game; only staff fulfillment consumes stock.
     const e = await this.event(db);
     for (;;) {
@@ -198,7 +202,21 @@ export class GameService {
       const p = await this.player(token,db,true);
       if (!p.finished_at) throw new HttpError(409,'rounds_incomplete');
       await this.award(p,db);
-      return this.me(p,db);
+      const me = await this.me(p,db);
+      if (!me.reward?.code) throw new HttpError(409,'profile_required');
+      return me;
+    });
+  }
+  async profile(token: string, body: Record<string,unknown>) {
+    return transaction(this.pool,async db => {
+      const p = await this.player(token,db,true);
+      if (!p.finished_at) throw new HttpError(409,'rounds_incomplete');
+      const {value,errors} = validateCampaign(body);
+      if (Object.keys(errors).length) throw new HttpError(400,'invalid',{errors});
+      const updated = (await db.query('UPDATE players SET industry=$2,challenge=$3,planning=$4 WHERE id=$1 RETURNING *',
+        [p.id,value.industry,value.challenge,value.planning])).rows[0] as Player;
+      await this.award(updated,db);
+      return this.me(updated,db);
     });
   }
   async interest(token: string, wants: unknown) {

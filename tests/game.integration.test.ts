@@ -122,11 +122,12 @@ test('prize fulfillment: historical claims are not redrawn or charged to new sto
   expect(result).toMatchObject({claimed:true,legacy:true,prize:null,replayed:true,wheel:null});
   expect((await service.inventory()).fulfilled).toBe(0);
 });
-test('prize fulfillment: TV signup requires five fields and consent; phone retains qualifiers',async()=>{
+test('prize fulfillment: both signup profiles require five fields and consent',async()=>{
   const minimal={...signup(),source:'tv',industry:'',challenge:'',planning:''};
   const tv=await register(minimal);
   expect((await pool.query('SELECT industry,challenge,planning,marketing_optin FROM players WHERE id=$1',[tv.me.id])).rows[0]).toEqual({industry:null,challenge:null,planning:null,marketing_optin:false});
-  await expect(register({...minimal,mobile:signup().mobile,source:'phone'})).rejects.toMatchObject({code:'invalid'});
+  const phone=await register({...minimal,mobile:signup().mobile,source:'phone'});
+  expect(phone.me.profile.complete).toBe(false);
   const content=await service.content();
   await expect(service.signup({...minimal,mobile:signup().mobile,consent:false,contentVersion:content.version,consentVersion:content.consentVersion},randomUUID())).rejects.toMatchObject({code:'invalid'});
 });
@@ -160,4 +161,40 @@ test('published content changes cannot alter an existing player’s reveals',asy
   await service.audience(token,'genz');await service.start(token,0);
   expect((await service.lock(token,0,{pick:'b',conf:2,clientMs:5000})).winner).toBe('b');
   expect((await service.current(token)).content.version).toBe(c.id);
+});
+
+
+test.each(['phone','tv'])('campaign questions: %s saves results before answers and issues one retry-safe code',async source=>{
+  const player=await register({...signup(),source,industry:'',challenge:'',planning:''});
+  const answers={industry:'Agency',challenge:'Proving ROI',planning:'Yes'};
+  await expect(service.profile(player.token,answers)).rejects.toMatchObject({code:'rounds_incomplete'});
+  const finished=await play(player.token);
+  expect(finished.finished).toBe(true);expect(finished.score).toBeGreaterThan(0);
+  expect(finished.reward?.code).toBeNull();expect(finished.profile.complete).toBe(false);
+  await expect(service.retryAward(player.token)).rejects.toMatchObject({code:'profile_required'});
+  await expect(service.profile(player.token,{...answers,industry:'invalid',planning:''})).rejects.toMatchObject({code:'invalid',details:{errors:{industry:'Choose an industry.',planning:'Pick one.'}}});
+  expect((await service.current(player.token)).reward?.code).toBeNull();
+  const saved=await Promise.all(Array.from({length:3},()=>service.profile(player.token,answers)));
+  expect(saved[0].profile).toEqual({...answers,complete:true});
+  expect(saved[0].reward?.code).toBeTruthy();
+  expect(new Set(saved.map(p=>p.reward!.code)).size).toBe(1);
+  expect((await service.current(player.token)).reward?.code).toBe(saved[0].reward?.code);
+  expect((await service.retryAward(player.token)).reward?.code).toBe(saved[0].reward?.code);
+  expect((await service.finish(player.token)).score).toBe(finished.score);
+  expect((await service.inventory()).fulfilled).toBe(0);
+  const staff=await service.login('4321','campaign-staff');
+  expect((await service.summary(staff)).leads).toContainEqual(expect.objectContaining({name:'Test Player',challenge:'Proving ROI',planning:'Yes'}));
+  expect(await service.exportRows(staff)).toContainEqual(expect.objectContaining(answers));
+});
+
+test('campaign questions: previously issued codes survive missing campaign answers and fulfillment',async()=>{
+  const player=await register();const finished=await play(player.token);const code=finished.reward!.code!;
+  await pool.query('UPDATE players SET industry=NULL,challenge=NULL,planning=NULL WHERE id=$1',[player.me.id]);
+  expect((await service.current(player.token)).profile.complete).toBe(false);
+  expect((await service.retryAward(player.token)).reward?.code).toBe(code);
+  const staff=await service.login('4321','old-code-staff');
+  const inventory=await service.inventory();
+  await service.updateInventory(staff,{revision:inventory.revision,totals:Object.fromEntries(inventory.items.map(p=>[p.id,p.id==='ballpen'?1:0]))});
+  await service.claim(staff,code,{confirmedNumber:true,fulfillmentConfirmed:true});
+  expect((await service.current(player.token)).reward).toMatchObject({code,claimed:true,prize:{id:'ballpen'}});
 });
