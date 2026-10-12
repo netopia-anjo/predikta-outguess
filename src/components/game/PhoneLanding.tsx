@@ -1,7 +1,7 @@
 'use client';
 import type { CSSProperties } from 'react';
 import type { Ad, Board, ContentPayload } from '@/shared/types';
-import { fmt, manilaTime } from '@/lib/hooks';
+import { fmt } from '@/lib/hooks';
 
 function PreviewAd({ ad, brand, label }: { ad: Ad; brand: string; label: string }) {
   const style = { '--b1': ad.b1, '--b2': ad.b2, '--k': ad.k, '--a': ad.a } as CSSProperties;
@@ -14,21 +14,15 @@ function PreviewAd({ ad, brand, label }: { ad: Ad; brand: string; label: string 
   </figure>;
 }
 
-function releaseTime(ms: number) {
-  const day = (time: number) => new Date(time).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-  const date = day(ms) === day(Date.now()) ? 'today' : new Date(ms).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'Asia/Manila' });
-  return `${date} at ${manilaTime(ms)} (Manila time)`;
-}
-
 export function PhoneLanding({ content, board }: { content: ContentPayload; board?: Board | null }) {
   const audience = content.audiences[0];
   const preview = audience?.rounds[0];
-  const gc = board?.gc;
-  const rewardTitle = !gc ? 'Checking reward availability…' : gc.availableNow > 0
-    ? `${fmt(gc.availableNow)} GCash ${gc.availableNow === 1 ? 'reward' : 'rewards'} available now`
-    : gc.nextDropAt ? 'Next GCash release' : 'Rewards fully allocated.';
-  const rewardDetail = !gc ? null : gc.availableNow > 0 ? 'Finish all 3 rounds, while supplies last.'
-    : gc.nextDropAt ? releaseTime(gc.nextDropAt) : 'You can still play for your score.';
+  const inventory = board?.prizes;
+  const rewardTitle = !inventory ? 'Checking prize availability…' : inventory.remaining > 0
+    ? `${fmt(inventory.remaining)} ${inventory.remaining === 1 ? 'prize' : 'prizes'} available now`
+    : 'Prizes currently unavailable.';
+  const rewardDetail = !inventory ? null : inventory.remaining > 0 ? 'Finish all 3 rounds. Staff draw your prize, while supplies last.'
+    : 'You can still play for your score.';
   return <>
     <div className="hero play-hero">
       <i className="orb" aria-hidden="true" /><i className="orb two" aria-hidden="true" />

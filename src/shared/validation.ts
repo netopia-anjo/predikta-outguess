@@ -47,18 +47,18 @@ const validEmail = (email: string) => {
     /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(email);
 };
 
-export function validateSignup(raw: Record<string, unknown>): { value: SignupInput; errors: SignupErrors } {
+export function validateSignup(raw: Record<string, unknown>, source: 'phone' | 'tv' = 'phone'): { value: SignupInput; errors: SignupErrors } {
   const value: SignupInput = {
     name: text(raw.name),
     mobile: normalizeMobile(raw.mobile),
     email: text(raw.email).toLowerCase(),
     company: text(raw.company),
     role: text(raw.role),
-    industry: text(raw.industry),
-    challenge: text(raw.challenge),
-    planning: text(raw.planning),
+    industry: source === 'tv' ? '' : text(raw.industry),
+    challenge: source === 'tv' ? '' : text(raw.challenge),
+    planning: source === 'tv' ? '' : text(raw.planning),
     consent: raw.consent === true,
-    optin: raw.optin === true,
+    optin: source === 'phone' && raw.optin === true,
   };
   const e: SignupErrors = {};
   if (!value.name) e.name = 'Enter your full name.';
@@ -70,9 +70,11 @@ export function validateSignup(raw: Record<string, unknown>): { value: SignupInp
   for (const field of ['name','email','company','role'] as const) {
     if (value[field].length > SIGNUP_LIMITS[field]) e[field] = `Use ${SIGNUP_LIMITS[field]} characters or fewer.`;
   }
-  if (!(INDUSTRIES as readonly string[]).includes(value.industry)) e.industry = 'Choose an industry.';
-  if (!(CHALLENGES as readonly string[]).includes(value.challenge)) e.challenge = 'Pick one.';
-  if (!(PLANNING as readonly string[]).includes(value.planning)) e.planning = 'Pick one.';
+  if (source === 'phone') {
+    if (!(INDUSTRIES as readonly string[]).includes(value.industry)) e.industry = 'Choose an industry.';
+    if (!(CHALLENGES as readonly string[]).includes(value.challenge)) e.challenge = 'Pick one.';
+    if (!(PLANNING as readonly string[]).includes(value.planning)) e.planning = 'Pick one.';
+  }
   if (!value.consent) e.consent = 'Consent is required to play.';
   if (raw.optin !== undefined && typeof raw.optin !== 'boolean') e.optin = 'Choose whether to receive marketing updates.';
   return { value, errors: e };

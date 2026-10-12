@@ -6,13 +6,14 @@ import { signToken, verifyToken, pinMatches } from './auth';
 import { publicContent, manilaStart, type StoredContent } from './content';
 import { scoreRound, summarize, ROUND_MS } from '../shared/rules';
 import { CLAIM_CODE_PATTERN, normalizeClaimCode, validStaffPin, validateSignup } from '../shared/validation';
-import type { Board, ConfIdx, GcStatus, Me, Reveal, RoundResult, Side } from '../shared/types';
+import type { Board, ConfIdx, FulfillResult, Me, Prize, PrizeInventory, PrizeStock, Reveal, RoundResult, Side, StaffClaim } from '../shared/types';
+import { MAX_PRIZE_QUANTITY, PRIZES } from '../shared/prizes';
 
 type Db = Pool | PoolClient;
 export class HttpError extends Error {
   constructor(public status: number, public code: string, public details: Record<string,unknown> = {}) { super(code); }
 }
-interface Options { eventId: string; demo: boolean; secret: string; staffPin: string; publicUrl: string }
+interface Options { eventId: string; demo: boolean; secret: string; staffPin: string; publicUrl: string; contactUrl?: string; privacyPolicyUrl?: string | null }
 interface Player {
   id: string; event_id: string; content_version: string; signup_key: string; signup_digest: string; name: string; mobile: string;
   audience_id: string | null; score: number | null; correct: number | null; persona: Me['persona']; finished_at: number | null;
@@ -23,6 +24,8 @@ interface RoundRow { idx: number; started_at: number; locked_at: number | null; 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const masked = (m: string) => `${m.slice(0,4)} ••• ${m.slice(-4)}`;
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const prizeOf = (row: { prize_id?: string | null; prize_name?: string; amount_php?: number | null }): Prize | null =>
+  row.prize_id ? { id:row.prize_id, name:row.prize_name!, amountPhp:row.amount_php ?? null } : null;
 
 export class GameService {
   constructor(public pool: Pool, public options: Options, public now = () => Date.now()) {}
@@ -39,7 +42,7 @@ export class GameService {
   }
   async content() {
     const e = await this.event();
-    return publicContent(await this.storedContent(e.active_content),this.options.publicUrl,e.demo,e.consent_text,e.consent_version);
+    return publicContent(await this.storedContent(e.active_content),this.options.publicUrl,e.demo,e.consent_text,e.consent_version,this.options);
   }
   async player(token: string, db: Db = this.pool, lock = false): Promise<Player> {
     const id = verifyToken(token,'player',this.options.secret,this.now());
@@ -51,16 +54,33 @@ export class GameService {
   async rounds(id: string, db: Db = this.pool): Promise<RoundRow[]> {
     return (await db.query('SELECT * FROM rounds WHERE player_id=$1 ORDER BY idx',[id])).rows;
   }
-  async gc(db: Db = this.pool, e?: EventRow): Promise<GcStatus> {
-    e ??= await this.event(db);
-    const dayEnd = manilaStart(this.now()) + 86400_000;
-    const b = (await db.query(`SELECT
-      COALESCE(SUM(allocation) FILTER (WHERE starts_at <= $2),0)::int AS released,
-      COALESCE(SUM(allocation) FILTER (WHERE starts_at < $3),0)::int AS tonight,
-      MIN(starts_at) FILTER (WHERE starts_at > $2) AS next
-      FROM gc_blocks WHERE event_id=$1`,[e.id,this.now(),dayEnd])).rows[0];
-    const availableNow = Math.max(0,Math.min(b.released,e.total_cap)-e.awarded_count);
-    return { availableNow, leftToday: Math.max(0,Math.min(b.tonight,e.total_cap)-e.awarded_count), nextDropAt: availableNow || e.awarded_count >= e.total_cap ? null : b.next };
+  async inventory(db: Db = this.pool): Promise<PrizeInventory> {
+    const rows = (await db.query<PrizeStock & {revision:number}>(`SELECT p.id,p.name,p.amount_php AS "amountPhp",
+      i.total,i.fulfilled,i.total-i.fulfilled AS remaining,e.inventory_revision AS revision
+      FROM prize_inventory i JOIN prize_catalog p ON p.id=i.prize_id JOIN events e ON e.id=i.event_id
+      WHERE i.event_id=$1 ORDER BY p.position`,[this.options.eventId])).rows;
+    if (rows.length !== PRIZES.length) throw new HttpError(503,'prizes_not_initialized');
+    const items = rows.map(row=>({id:row.id,name:row.name,amountPhp:row.amountPhp,total:row.total,fulfilled:row.fulfilled,remaining:row.remaining}));
+    return {revision:rows[0].revision,items,total:items.reduce((n,p)=>n+p.total,0),
+      fulfilled:items.reduce((n,p)=>n+p.fulfilled,0),remaining:items.reduce((n,p)=>n+p.remaining,0),
+      cashRemainingPhp:items.reduce((n,p)=>n+p.remaining*(p.amountPhp??0),0)};
+  }
+  async staffInventory(token: string) { await this.staff(token); return this.inventory(); }
+  async updateInventory(token: string, body: Record<string,unknown>) {
+    await this.staff(token);
+    const totals = body.totals;
+    if (!Number.isSafeInteger(body.revision) || Number(body.revision)<0 || !totals || typeof totals!=='object' || Array.isArray(totals)) throw new HttpError(400,'invalid_inventory');
+    const values = totals as Record<string,unknown>;
+    if (Object.keys(values).length!==PRIZES.length || PRIZES.some(p=>!Number.isInteger(values[p.id]) || Number(values[p.id])<0 || Number(values[p.id])>MAX_PRIZE_QUANTITY)) throw new HttpError(400,'invalid_inventory');
+    return transaction(this.pool,async db=>{
+      await this.event(db,true);
+      const current=await this.inventory(db);
+      if(current.revision!==body.revision)throw new HttpError(409,'inventory_changed');
+      if(current.items.some(p=>Number(values[p.id])<p.fulfilled))throw new HttpError(400,'below_fulfilled');
+      for(const p of current.items)await db.query('UPDATE prize_inventory SET total=$3 WHERE event_id=$1 AND prize_id=$2',[this.options.eventId,p.id,values[p.id]]);
+      await db.query('UPDATE events SET inventory_revision=inventory_revision+1 WHERE id=$1',[this.options.eventId]);
+      return this.inventory(db);
+    });
   }
   async me(p: Player, db: Db = this.pool): Promise<Me> {
     const e = await this.event(db);
@@ -68,19 +88,18 @@ export class GameService {
     const rows = await this.rounds(p.id,db);
     const results = rows.filter(r => r.reveal).map(r => r.reveal!.result);
     const open = rows.find(r => !r.locked_at);
-    const claim = (await db.query('SELECT * FROM claims WHERE player_id=$1',[p.id])).rows[0];
-    const gc: Me['gc'] = !p.finished_at ? null : claim
-      ? { status: 'awarded', code: claim.code, claimed: !!claim.claimed_at, mobileMasked: masked(p.mobile) }
-      : { status: 'waiting', nextDropAt: (await this.gc(db,e)).nextDropAt, mobileMasked: masked(p.mobile) };
-    return { id: p.id, name: p.name, audienceId: p.audience_id, content: publicContent(c,this.options.publicUrl,e.demo,e.consent_text,e.consent_version),
+    const claim = (await db.query('SELECT c.*,p.name AS prize_name,p.amount_php FROM claims c LEFT JOIN prize_catalog p ON p.id=c.prize_id WHERE c.player_id=$1',[p.id])).rows[0];
+    const reward: Me['reward'] = !p.finished_at ? null : {code:claim?.code??null,claimed:!!claim?.claimed_at,
+      mobileMasked:masked(p.mobile),prize:claim?prizeOf(claim):null,legacy:!!claim?.claimed_at&&!claim?.prize_id};
+    return { id: p.id, name: p.name, audienceId: p.audience_id, content: publicContent(c,this.options.publicUrl,e.demo,e.consent_text,e.consent_version,this.options),
       rounds: results, startedRound: open ? { idx: open.idx, elapsedMs: Math.max(0,this.now()-open.started_at) } : null,
-      wallet: results.reduce((n,r) => n+r.points+r.bonus,0), finished: !!p.finished_at, score: p.score, correct: p.correct, persona: p.persona, wantsSim: p.wants_sim, gc };
+      wallet: results.reduce((n,r) => n+r.points+r.bonus,0), finished: !!p.finished_at, score: p.score, correct: p.correct, persona: p.persona, wantsSim: p.wants_sim, reward };
   }
   async signup(body: Record<string,unknown>, key: string) {
     if (!/^[\w-]{32,100}$/.test(key)) throw new HttpError(400,'idempotency_key_required');
-    const { value: v, errors } = validateSignup(body);
-    if (Object.keys(errors).length) throw new HttpError(400,'invalid',{errors});
     if (!['phone','tv'].includes(String(body.source))) throw new HttpError(400,'invalid_source');
+    const { value: v, errors } = validateSignup(body,body.source==='tv'?'tv':'phone');
+    if (Object.keys(errors).length) throw new HttpError(400,'invalid',{errors});
     const digest = hash(JSON.stringify({ ...v, source: body.source, version: body.contentVersion, consent: body.consentVersion }));
     const p = await transaction(this.pool,async db => {
       // Per-key advisory lock also covers a request whose INSERT has not committed yet.
@@ -96,7 +115,7 @@ export class GameService {
       const r = await db.query(`INSERT INTO players(id,event_id,content_version,signup_key,signup_digest,source,name,mobile,email,company,role,industry,challenge,planning,
         consent_version,consent_text,consent_at,marketing_optin,created_at,session_expires)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$17,$19)
-        ON CONFLICT(event_id,mobile) DO NOTHING RETURNING *`,[randomUUID(),e.id,e.active_content,hash(key),digest,body.source,v.name,v.mobile,v.email,v.company,v.role,v.industry,v.challenge,v.planning,e.consent_version,e.consent_text,now,v.optin,now+30*86400_000]);
+        ON CONFLICT(event_id,mobile) DO NOTHING RETURNING *`,[randomUUID(),e.id,e.active_content,hash(key),digest,body.source,v.name,v.mobile,v.email,v.company,v.role,v.industry||null,v.challenge||null,v.planning||null,e.consent_version,e.consent_text,now,v.optin,now+30*86400_000]);
       if (!r.rowCount) throw new HttpError(409,'duplicate_mobile');
       return r.rows[0] as Player;
     });
@@ -153,15 +172,13 @@ export class GameService {
   }
   private async award(p: Player, db: PoolClient) {
     if (!p.finished_at || (await db.query('SELECT 1 FROM claims WHERE player_id=$1',[p.id])).rowCount) return;
-    // Lock the event row: inventory is shared by every Cloud Run instance.
-    const e = await this.event(db,true);
-    if ((await this.gc(db,e)).availableNow <= 0) return;
+    // A claim code identifies a completed game; only staff fulfillment consumes stock.
+    const e = await this.event(db);
     for (;;) {
       const code = Array.from({length:6},() => alphabet[randomInt(alphabet.length)]).join('');
       const r = await db.query('INSERT INTO claims(player_id,event_id,code,awarded_at) VALUES($1,$2,$3,$4) ON CONFLICT(code) DO NOTHING',[p.id,e.id,code,this.now()]);
       if (r.rowCount) break;
     }
-    await db.query('UPDATE events SET awarded_count=awarded_count+1 WHERE id=$1',[e.id]);
   }
   async finish(token: string) {
     return transaction(this.pool,async db => {
@@ -195,7 +212,7 @@ export class GameService {
     const stat = (await this.pool.query(`SELECT count(*) FILTER (WHERE r.pick IS NOT NULL)::int picks,
       count(*) FILTER (WHERE r.correct)::int matches FROM rounds r JOIN players p ON p.id=r.player_id WHERE p.event_id=$1`,[e.id])).rows[0];
     const leaders = (await this.pool.query('SELECT id,name,score FROM players WHERE event_id=$1 AND finished_at >= $2 AND finished_at < $3 ORDER BY score DESC,total_ms ASC,finished_at ASC,id ASC LIMIT 10',[e.id,manilaStart(this.now()),manilaStart(this.now())+86400_000])).rows;
-    return { gc: await this.gc(this.pool,e), stat: {...stat,pct: stat.picks ? Math.round(stat.matches/stat.picks*100) : null},
+    return { prizes: await this.inventory(), stat: {...stat,pct: stat.picks ? Math.round(stat.matches/stat.picks*100) : null},
       leaderboard: leaders.map(p => ({id:p.id,name:p.name.trim().split(/\s+/).map((n:string,i:number) => i ? `${n[0]}.` : n).join(' '),score:p.score})) };
   }
   async login(pin: unknown, identity: string, kind: 'staff' | 'tv' = 'staff') {
@@ -235,31 +252,47 @@ export class GameService {
     const day = manilaStart(this.now());
     const isToday = (n: number | null) => n !== null && n >= day && n < day+86400_000;
     const leads = rows.filter(p => p.planning === 'Yes' || p.wants_sim).map(p => ({name:p.name,email:p.email,company:p.company,role:p.role,challenge:p.challenge,planning:p.planning,wantsSim:p.wants_sim,claimed:!!p.claimed_at}));
-    const gc = await this.gc(this.pool,e);
-    const allocation = (await this.pool.query('SELECT COALESCE(sum(allocation),0)::int n FROM gc_blocks WHERE event_id=$1 AND starts_at >= $2 AND starts_at < $3',[e.id,day,day+86400_000])).rows[0].n;
-    return { kpis: {playsToday:rows.filter(p => isToday(p.finished_at)).length,claimedToday:rows.filter(p => isToday(p.claimed_at)).length,leftToday:gc.leftToday,allocToday:allocation,awardedTotal:e.awarded_count,cap:e.total_cap,waitingForDrop:rows.filter(p => p.finished_at && !p.code).length,hotLeads:leads.length},
+    const inventory=await this.inventory();
+    return { inventory,kpis: {playsToday:rows.filter(p => isToday(p.finished_at)).length,claimedToday:rows.filter(p => isToday(p.claimed_at)).length,remaining:inventory.remaining,hotLeads:leads.length},
       pending: rows.filter(p => p.code && !p.claimed_at).map(p => ({name:p.name,company:p.company,code:p.code,awardedAt:p.awarded_at})),leads };
   }
-  async claimView(code: string, db: Db = this.pool) {
+  async claimView(code: string, db: Db = this.pool): Promise<StaffClaim> {
     code = normalizeClaimCode(code);
     if (!CLAIM_CODE_PATTERN.test(code)) throw new HttpError(400,'invalid_claim_code');
-    const p = (await db.query(`SELECT p.name,p.company,p.role,p.mobile,p.score,p.persona,c.code,c.claimed_at FROM claims c JOIN players p ON p.id=c.player_id WHERE c.code=$1 AND c.event_id=$2`,[code.trim().toUpperCase(),this.options.eventId])).rows[0];
+    const p = (await db.query(`SELECT p.name,p.company,p.role,p.mobile,p.score,p.persona,c.code,c.claimed_at,c.prize_id,
+      pc.name AS prize_name,pc.amount_php FROM claims c JOIN players p ON p.id=c.player_id
+      LEFT JOIN prize_catalog pc ON pc.id=c.prize_id WHERE c.code=$1 AND c.event_id=$2 AND p.finished_at IS NOT NULL`,[code,this.options.eventId])).rows[0];
     if (!p) throw new HttpError(404,'no_such_code');
-    return { name:p.name,company:p.company,role:p.role,mobile:p.mobile,score:p.score,persona:p.persona,code:p.code,claimed:!!p.claimed_at,claimedAt:p.claimed_at };
+    return { name:p.name,company:p.company,role:p.role,mobile:p.mobile,score:p.score,persona:p.persona,code:p.code,claimed:!!p.claimed_at,claimedAt:p.claimed_at,prize:prizeOf(p),legacy:!!p.claimed_at&&!p.prize_id };
   }
   async lookup(token: string, code: string) { await this.staff(token); return this.claimView(code); }
-  async claim(token: string, code: string, body: Record<string,unknown>) {
+  async claim(token: string, code: string, body: Record<string,unknown>): Promise<FulfillResult> {
     const staff = await this.staff(token);
     if (body.confirmedNumber !== true || body.fulfillmentConfirmed !== true) throw new HttpError(400,'confirm_number_and_fulfillment');
     return transaction(this.pool,async db => {
-      const result = await db.query('UPDATE claims SET claimed_at=$3,staff_session=$4 WHERE code=$1 AND event_id=$2 AND claimed_at IS NULL RETURNING player_id',[code.trim().toUpperCase(),this.options.eventId,this.now(),staff]);
-      // A repeated confirmation returns the same fulfilled claim; it never initiates a payout.
-      if (!result.rowCount) await this.claimView(code,db);
-      return this.claimView(code,db);
+      // The shared event lock serializes all draws and stock edits across replicas.
+      await this.event(db,true);
+      const clean=normalizeClaimCode(code);
+      await db.query('SELECT player_id FROM claims WHERE code=$1 AND event_id=$2 FOR UPDATE',[clean,this.options.eventId]);
+      const existing=await this.claimView(clean,db);
+      if(existing.claimed)return {...existing,replayed:true,wheel:null};
+      const inventory=await this.inventory(db);
+      const items=inventory.items.filter(p=>p.remaining>0);
+      if(!items.length)throw new HttpError(409,'out_of_stock');
+      let ticket=randomInt(inventory.remaining);
+      const prize=items.find(p=>{ticket-=p.remaining;return ticket<0;})!;
+      const wheel={items,prizeId:prize.id};
+      await db.query('UPDATE prize_inventory SET fulfilled=fulfilled+1 WHERE event_id=$1 AND prize_id=$2',[this.options.eventId,prize.id]);
+      await db.query('UPDATE claims SET prize_id=$3,wheel_snapshot=$4,claimed_at=$5,staff_session=$6 WHERE code=$1 AND event_id=$2',
+        [clean,this.options.eventId,prize.id,JSON.stringify(wheel),this.now(),staff]);
+      await db.query('UPDATE events SET inventory_revision=inventory_revision+1 WHERE id=$1',[this.options.eventId]);
+      return {...await this.claimView(clean,db),replayed:false,wheel};
     });
   }
   async exportRows(token: string) {
     await this.staff(token);
-    return (await this.pool.query(`SELECT p.*,c.code,c.awarded_at,c.claimed_at FROM players p LEFT JOIN claims c ON c.player_id=p.id WHERE p.event_id=$1 ORDER BY p.created_at`,[this.options.eventId])).rows;
+    return (await this.pool.query(`SELECT p.*,c.code,c.awarded_at,c.claimed_at,c.prize_id,pc.name AS prize_name,pc.amount_php
+      FROM players p LEFT JOIN claims c ON c.player_id=p.id LEFT JOIN prize_catalog pc ON pc.id=c.prize_id
+      WHERE p.event_id=$1 ORDER BY p.created_at`,[this.options.eventId])).rows;
   }
 }

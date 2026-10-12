@@ -331,3 +331,44 @@ textarea.csv { background: rgba(4, 10, 42, .55); color: #fff; border-color: var(
   }
   .tvgame .steps li:before { font-size: 2.4cqw; }
 }
+
+/* Prize inventory and fulfillment keep the event's dark surfaces; money banners are yellow. */
+.prize-value-banner { background: linear-gradient(110deg, rgba(255, 209, 102, .18), rgba(255, 209, 102, .06)); border: 1px solid rgba(255, 209, 102, .65); color: #ffd166; }
+.prize-value-banner b { color: #ffd166; text-shadow: none; }
+.tvgc.prize-value-banner { flex-direction: column; align-items: flex-start; gap: 4px; }
+.tv-prizes { flex: none; }
+.tv-merch-stock { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
+.tv-merch-stock li { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 14px; }
+.tv-merch-stock b { color: var(--cyan); font-family: var(--mono); }
+.prize-winner { color: var(--cyan); }
+.inventory-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.inventory-item { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px; border: 1px solid var(--edge); border-radius: 12px; background: rgba(4, 10, 42, .35); }
+.inventory-item h3 { font-size: 15px; }
+.inventory-remaining { color: var(--cyan); font-family: var(--mono); font-size: 24px; overflow-wrap: anywhere; }
+.inventory-remaining small { display: block; font-family: var(--body); color: var(--muted); font-size: 12px; font-weight: 400; }
+.inventory-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.inventory-actions .btn { width: auto; flex: 1; }
+.prize-result { padding: 14px; border: 1px solid var(--edge-hi); border-radius: 14px; background: var(--pred-soft); }
+.prize-result h3 { color: var(--cyan); font-size: 22px; margin-top: 6px; }
+.prize-wheel { display: flex; flex-direction: column; gap: 18px; }
+.prize-wheel-frame { width: min(100%, 280px); aspect-ratio: 1; position: relative; align-self: center; margin-top: 16px; }
+.prize-wheel-disc { position: absolute; inset: 0; border: 6px solid #0a174b; border-radius: 50%; box-shadow: 0 0 0 1px var(--edge-hi), 0 0 30px rgba(63, 224, 255, .25); transition: transform 3s cubic-bezier(.1, .65, .15, 1); }
+.prize-wheel-hub { position: absolute; inset: 34%; display: grid; place-content: center; border-radius: 50%; background: var(--bg0); border: 2px solid #fff; color: white; font-weight: 800; font-size: 15px; text-align: center; line-height: 1.2; }
+.prize-wheel-pointer { position: absolute; left: 50%; top: -12px; z-index: 1; transform: translateX(-50%); width: 0; height: 0; border-left: 13px solid transparent; border-right: 13px solid transparent; border-top: 26px solid #fff; filter: drop-shadow(0 2px 3px #040a2a); }
+.prize-wheel-legend { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.prize-wheel-legend li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.prize-wheel-legend i { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.prize-wheel-legend span { flex: 1; }
+.prize-wheel-legend small { color: var(--muted); }
+@media (max-width: 1000px) { .inventory-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 599px) { .inventory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .inventory-item { padding: 10px; } }
+@media (max-width: 359px) { .inventory-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (min-width: 1100px) and (min-aspect-ratio: 4/3) {
+  .tvgame .screen[data-s="landing"] .hero { grid-row: span 6; }
+  .tv-merch-stock { gap: .35cqw; }
+  .tv-merch-stock li { font-size: .95cqw; }
+  .tv-prizes { padding: .7cqw; gap: .5cqw; }
+  .tvgc.prize-value-banner { padding: .65cqw .8cqw; }
+  .tvgc.prize-value-banner b { font-size: 1.9cqw; }
+  .tvgc.prize-value-banner span { font-size: 1cqw; }
+}

@@ -2,7 +2,7 @@
 import { useCallback,useEffect,useRef,useState } from 'react';
 import { Game } from './game/Game';
 import { Brand,Qr } from './game/bits';
-import { fmt,manilaTime,useBoard,useContent } from '@/lib/hooks';
+import { fmt,useBoard,useContent } from '@/lib/hooks';
 import { api,ApiError } from '@/lib/api';
 import { validStaffPin } from '@/shared/validation';
 export function TvApp() {
@@ -48,7 +48,16 @@ function TvScreen({onAccessDenied,onLock,busy,message}:{onAccessDenied:()=>void;
       <Brand/>
       <h1>Outguess<br/><em>the crowd.</em></h1>
       <div className="tvcard tvqr">{content&&<Qr text={content.joinUrl} label="Scan to play on your phone"/>}<div><b>Scan to play</b><span>Or tap the screen to play here.</span></div></div>
-      <div className="tvgc"><b>{board?fmt(board.gc.leftToday):'–'}</b><span>GCash GCs left today{board?.gc.nextDropAt&&<> · next drop {manilaTime(board.gc.nextDropAt)}</>}</span></div>
+      <div className="tvcard tv-prizes">
+        <div className="tvgc prize-value-banner"><b>PHP {board ? fmt(board.prizes.cashRemainingPhp) : '–'}</b><span>GCash up for grabs today</span></div>
+        <ul className="tv-merch-stock" aria-label="Remaining merchandise">
+          {['cellphone_holder','tote_bag','pencil_holder'].map(id=>{
+            const item=board?.prizes.items.find(p=>p.id===id);
+            const names:Record<string,string>={cellphone_holder:'Cellphone Holder',tote_bag:'Tote Bag',pencil_holder:'Pencil Holder'};
+            return <li key={id}><span>{item?.name??names[id]}</span><b>{item?fmt(item.remaining):'–'}</b></li>;
+          })}
+        </ul>
+      </div>
       <div className="tvcard"><span className="eyebrow">Digicon vs. the simulation</span><span className="bigstat">{board?.stat.pct!=null?`${board.stat.pct}%`:'–'}</span><span className="tvsmall">{board?.stat.picks?`${fmt(board.stat.picks)} attendee picks · matched Predikta`:'The crowd is warming up. Make the first call.'}</span></div>
       <div className="tvcard grow"><div className="head"><span className="eyebrow">Today’s top 10</span><span className={`tvsmall tvlive ${live?'':'off'}`}><i/>{live?'Live':'Reconnecting'}</span></div>
         <table className="lb"><caption className="sr-only">Today’s leaderboard</caption><tbody>{board?.leaderboard.map((p,i)=><tr key={p.id} className={p.id===player?'me':''}><td className="r">{String(i+1).padStart(2,'0')}</td><td>{p.name}</td><td className="s">{fmt(p.score)}</td></tr>)}</tbody></table>
@@ -57,6 +66,6 @@ function TvScreen({onAccessDenied,onLock,busy,message}:{onAccessDenied:()=>void;
       {message&&<p className="tvsmall" role="alert">{message}</p>}
       <button className="tvlock" onClick={onLock} disabled={busy}>{busy?'Locking…':'Lock TV'}</button>
     </aside>
-    <section className="tvgame" aria-label="Touchscreen game">{content?<Game variant="tv" content={content} gcLeftToday={board?.gc.leftToday??null} onPlayer={setPlayer} onAccessDenied={onAccessDenied}/>:<div className="loading">{failed?'Waiting for the booth connection…':'Loading…'}</div>}</section>
+    <section className="tvgame" aria-label="Touchscreen game">{content?<Game variant="tv" content={content} prizes={board?.prizes??null} onPlayer={setPlayer} onAccessDenied={onAccessDenied}/>:<div className="loading">{failed?'Waiting for the booth connection…':'Loading…'}</div>}</section>
   </div></div></main>;
 }

@@ -35,6 +35,10 @@ spec:
               value: '5'
             - name: DEMO_MODE
               value: '0'
+            - name: ADSPARK_CONTACT_URL
+              value: https://www.adspark.ph/get-in-touch
+            - name: ADSPARK_PRIVACY_POLICY_URL
+              value: ''
             - name: DB_PASSWORD
               value: REPLACE_WITH_DB_PASSWORD
             - name: SESSION_SECRET

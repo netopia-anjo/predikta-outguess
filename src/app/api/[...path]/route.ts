@@ -41,6 +41,7 @@ async function handle(req: NextRequest) {
     if (method === 'GET' && path === '/api/health') {
       await getPool().query('SELECT 1');
       await service.event();
+      await service.inventory();
       data = { ok:true };
     } else if (method === 'GET' && path === '/api/content') data = await service.content();
     else if (method === 'GET' && path === '/api/board') data = await service.board();
@@ -78,6 +79,8 @@ async function handle(req: NextRequest) {
       try { await service.accessSession(kind === 'tv' ? tv : staff,kind); data = {ok:true}; }
       catch (e) { if (e instanceof HttpError && e.status === 401) data = {ok:false}; else throw e; }
     } else if (method === 'GET' && path === '/api/staff/summary') data = await service.summary(staff);
+    else if (method === 'GET' && path === '/api/staff/inventory') data = await service.staffInventory(staff);
+    else if (method === 'POST' && path === '/api/staff/inventory') data = await service.updateInventory(staff,body);
     else if (method === 'GET' && ['/api/staff/export.csv','/api/staff/claims.csv'].includes(path)) {
       const claims = path.endsWith('claims.csv');
       return new NextResponse(exportCsv(await service.exportRows(staff),claims),{headers:{'content-type':'text/csv; charset=utf-8','cache-control':'no-store','content-disposition':`attachment; filename="outguess-${claims?'claims':'signups'}.csv"`}});
