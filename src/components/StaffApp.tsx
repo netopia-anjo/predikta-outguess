@@ -18,6 +18,19 @@ interface Summary {
   pending:{name:string;company:string;code:string;awardedAt:number}[];
   leads:Lead[];
 }
+const STAFF_PAGE_SIZE=10;
+function StaffPagination({label,page,total,disabled,onPage}:{label:string;page:number;total:number;disabled:boolean;onPage:(page:number)=>void}) {
+  if(!total)return null;
+  const pages=Math.ceil(total/STAFF_PAGE_SIZE);
+  return <nav className="staff-pagination" aria-label={`${label} pagination`}>
+    <span className="small muted" role="status">Showing {fmt((page-1)*STAFF_PAGE_SIZE+1)}–{fmt(Math.min(page*STAFF_PAGE_SIZE,total))} of {fmt(total)}</span>
+    <div className="staff-pagination-controls">
+      <button type="button" className="ghost" aria-label={`Previous ${label.toLowerCase()} page`} disabled={disabled||page===1} onClick={()=>onPage(page-1)}>Previous</button>
+      <span className="small">Page {fmt(page)} of {fmt(pages)}</span>
+      <button type="button" className="ghost" aria-label={`Next ${label.toLowerCase()} page`} disabled={disabled||page===pages} onClick={()=>onPage(page+1)}>Next</button>
+    </div>
+  </nav>;
+}
 function Scanner({onCode,onClose}:{onCode:(s:string)=>void;onClose:()=>void}) {
   const video=useRef<HTMLVideoElement>(null);
   const [error,setError]=useState('');
@@ -61,6 +74,8 @@ export function StaffApp() {
   const [revealing,setRevealing]=useState(false);
   const [scanning,setScanning]=useState(false);
   const [filter,setFilter]=useState('');
+  const [pendingPage,setPendingPage]=useState(1);
+  const [leadsPage,setLeadsPage]=useState(1);
   const [codeError,setCodeError]=useState('');
   const operation=useRef(false);
   const begin=()=>{if(operation.current)return false;operation.current=true;setBusy(true);setMessage('');return true;};
@@ -130,10 +145,20 @@ export function StaffApp() {
     try{await api('/api/staff/logout',{body:{},retries:1});setAuth('out');setSummary(null);setClaim(null);setMessage('');setScanning(false);}
     catch(e){fail(e,'Could not sign out. Try again.');}finally{end();}
   }
+  const pending=summary?.pending??[];
+  const leads=summary?.leads.filter(p=>`${p.name} ${p.company} ${p.email} ${p.role}`.toLowerCase().includes(filter.trim().toLowerCase()))??[];
+  const pendingPages=Math.max(1,Math.ceil(pending.length/STAFF_PAGE_SIZE));
+  const leadsPages=Math.max(1,Math.ceil(leads.length/STAFF_PAGE_SIZE));
+  // Live updates may remove the final page. Keep the view on a valid page.
+  if(pendingPage>pendingPages)setPendingPage(pendingPages);
+  if(leadsPage>leadsPages)setLeadsPage(leadsPages);
+  const currentPendingPage=Math.min(pendingPage,pendingPages);
+  const currentLeadsPage=Math.min(leadsPage,leadsPages);
+  const visiblePending=pending.slice((currentPendingPage-1)*STAFF_PAGE_SIZE,currentPendingPage*STAFF_PAGE_SIZE);
+  const visibleLeads=leads.slice((currentLeadsPage-1)*STAFF_PAGE_SIZE,currentLeadsPage*STAFF_PAGE_SIZE);
   if(auth==='checking')return <main className="loading">Checking staff session…</main>;
   if(auth==='out')return <main className="login"><form className="panel" onSubmit={login} noValidate aria-busy={busy}><Brand/><span className="eyebrow">Booth operations</span><h1>Staff desk</h1><p className="muted">Sign in to confirm rewards and follow up with the crowd.</p><label className="f">Staff PIN<input type="password" inputMode="numeric" autoComplete="current-password" aria-label="Staff PIN" minLength={4} maxLength={12} pattern="[0-9]{4,12}" disabled={busy} aria-invalid={!!message} aria-describedby={message?'staff-login-error':undefined} value={pin} onChange={e=>{setPin(e.target.value);setMessage('');}} required/></label>{message&&<p id="staff-login-error" className="err" role="alert">{message}</p>}<button className="btn spark" disabled={busy}>{busy?'Signing in…':'Sign in'}</button><a className="linkish" href="/play">Back to the game</a></form></main>;
   const k=summary?.kpis;
-  const leads=summary?.leads.filter(p=>`${p.name} ${p.company} ${p.email} ${p.role}`.toLowerCase().includes(filter.toLowerCase()))??[];
   return <div className="wrap"><header className="bar"><div className="mark"><Brand/><div><b>Outguess the Crowd</b><small>Staff desk</small></div></div><span className="chip">{summary?(online?'Connected':'Reconnecting…'):(online?'Loading…':'Reconnecting…')}</span><a className="ghost" href="/api/staff/export.csv">Export sign-ups</a><a className="ghost" href="/api/staff/claims.csv">Export claims</a><button className="ghost" disabled={busy} onClick={logout}>Sign out</button></header>
     <main className="staff"><div className="kpis">{[['Plays today',k?.playsToday],[`Prizes issued — Day ${summary?.inventory.activeDay??'–'}`,summary?.inventory.fulfilled],['Prizes remaining',k?.remaining],['Hot leads',k?.hotLeads]].map(([label,n])=><div className="kpi" key={label}><b>{n??'–'}</b><span>{label}</span></div>)}</div>
       <InventoryPanel inventory={summary?.inventory??null} disabled={busy} onBusyChange={value=>{operation.current=value;setBusy(value);}} onSaved={inventory=>setSummary(current=>current?{...current,inventory,kpis:{...current.kpis,remaining:inventory.remaining}}:current)} onAccessDenied={()=>{setAuth('out');setSummary(null);setClaim(null);setMessage('Session expired. Sign in again.');}} />
@@ -157,8 +182,9 @@ export function StaffApp() {
             {summary?.inventory.remaining===0&&<p className="err">No prizes remain. Set quantities in Prize inventory to restock.</p>}
           </>}
         </div>}
-        <span className="eyebrow">Waiting to claim ({summary?.pending.length??'–'})</span><div className="pend">{summary?.pending.length?summary.pending.map(p=><button key={p.code} disabled={busy} onClick={()=>find(p.code)}><span>{p.name}<span className="muted"> · {p.company}</span></span><code>{p.code}</code></button>):<p className="small muted">{summary?'Nobody waiting.':'Loading claims…'}</p>}</div>
+        <span className="eyebrow">Waiting to claim ({summary?.pending.length??'–'})</span><div className="pend">{summary?.pending.length?visiblePending.map(p=><button key={p.code} disabled={busy} onClick={()=>find(p.code)}><span>{p.name}<span className="muted"> · {p.company}</span></span><code>{p.code}</code></button>):<p className="small muted">{summary?'Nobody waiting.':'Loading claims…'}</p>}</div>
+        <StaffPagination label="Waiting claims" page={currentPendingPage} total={pending.length} disabled={busy} onPage={setPendingPage}/>
         {summary&&<p className="small muted">Day {summary.inventory.activeDay}: {fmt(summary.inventory.fulfilled)} prizes issued · {fmt(summary.inventory.remaining)} remaining · {fmt(summary.kpis.noPrizeDraws)} no-prize draws</p>}
-      </section><section className="panel"><h2>Hot leads</h2><p className="small muted">Planning a campaign in the next six months, or interested in a Predikta simulation.</p><label className="f">Search leads<input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Name, company, email or role"/></label><div className="tscroll"><table className="leads"><thead><tr><th>Player</th><th>Company · role</th><th>Challenge</th><th>Interest</th></tr></thead><tbody>{leads.map((p,i)=><tr key={`${p.email}-${i}`}><td data-label="Player"><b>{p.name}</b><br/><span className="small muted">{p.email}</span></td><td data-label="Company · role">{p.company}<br/><span className="small muted">{p.role}</span></td><td data-label="Challenge">{p.challenge||'—'}</td><td data-label="Interest">{p.planning==='Yes'&&<span className="flag hot">Campaign in 6 mo</span>}{p.wantsSim&&<span className="flag sim">Wants simulation</span>}{p.claimed&&<span className="flag cl">Fulfilled</span>}</td></tr>)}</tbody></table></div>{!leads.length&&<p className="small muted">{summary?'No leads match yet.':'Loading leads…'}</p>}</section></div>
+      </section><section className="panel"><h2>Hot leads</h2><p className="small muted">Planning a campaign in the next six months, or interested in a Predikta simulation.</p><label className="f">Search leads<input value={filter} onChange={e=>{setFilter(e.target.value);setLeadsPage(1);}} placeholder="Name, company, email or role"/></label><div className="tscroll"><table className="leads"><thead><tr><th>Player</th><th>Company · role</th><th>Challenge</th><th>Interest</th></tr></thead><tbody>{visibleLeads.map((p,i)=><tr key={`${p.email}-${(currentLeadsPage-1)*STAFF_PAGE_SIZE+i}`}><td data-label="Player"><b>{p.name}</b><br/><span className="small muted">{p.email}</span></td><td data-label="Company · role">{p.company}<br/><span className="small muted">{p.role}</span></td><td data-label="Challenge">{p.challenge||'—'}</td><td data-label="Interest">{p.planning==='Yes'&&<span className="flag hot">Campaign in 6 mo</span>}{p.wantsSim&&<span className="flag sim">Wants simulation</span>}{p.claimed&&<span className="flag cl">Fulfilled</span>}</td></tr>)}</tbody></table></div><StaffPagination label="Hot leads" page={currentLeadsPage} total={leads.length} disabled={busy} onPage={setLeadsPage}/>{!leads.length&&<p className="small muted">{summary?'No leads match yet.':'Loading leads…'}</p>}</section></div>
     </main></div>;
 }

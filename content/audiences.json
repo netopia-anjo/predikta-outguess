@@ -34,10 +34,17 @@
           "image": "/content/ads/genz-q1-b-04b9e8e4cf4d.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 28,
+          "b": 72
+        },
+        "emotion": "Relief",
+        "driver": "Daily pain point: it solves a problem they face every morning",
+        "reactions": [
+          "Need ko ‘to sa North Ave every morning.",
+          "Wala nang hula-hula sa pila."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Gen Z · Q2",
@@ -64,10 +71,17 @@
           "image": "/content/ads/genz-q2-b-915e64aeba61.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 32,
+          "b": 68
+        },
+        "emotion": "Trust",
+        "driver": "Price-per-day math: they can compute the value instantly",
+        "reactions": [
+          "Mas mura pa sa isang milk tea.",
+          "Sana totoo yung walang cap."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Gen Z · Q3",
@@ -94,10 +108,17 @@
           "image": "/content/ads/genz-q3-b-83fd994e8de9.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 26,
+          "b": 74
+        },
+        "emotion": "Amusement",
+        "driver": "Self-recognition humor: being “called out” makes the ad shareable",
+        "reactions": [
+          "Grabe, ako ‘to.",
+          "Tag ko barkada ko dito."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Gen Z · Q4",
@@ -124,10 +145,17 @@
           "image": "/content/ads/genz-q4-b-65c9fe54ad01.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 23,
+          "b": 77
+        },
+        "emotion": "Excitement",
+        "driver": "Student identity plus a “sulit” (good value) deal",
+        "reactions": [
+          "Tara after class!",
+          "Unli rice pa lang, sold na ako."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Gen Z · Q5",
@@ -154,10 +182,17 @@
           "image": "/content/ads/genz-q5-b-c553ffea8ae0.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 31,
+          "b": 69
+        },
+        "emotion": "Hope",
+        "driver": "Lowered barrier plus commute proximity",
+        "reactions": [
+          "Finally, hindi ‘2 years experience’ ang hanap.",
+          "May malapit sa Cubao, apply na."
+        ],
+        "insightSource": "illustrative"
       }
     ]
   },
@@ -196,10 +231,17 @@
           "image": "/content/ads/moms-q1-b-b0170062211d.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 27,
+          "b": 73
+        },
+        "emotion": "Pride (being “wais,” or savvy)",
+        "driver": "Price comparison: savings are visible and easy to verify",
+        "reactions": [
+          "Ay, laki ng tipid.",
+          "I-forward ko sa GC ng magkakapatid."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Moms & Titas · Q2",
@@ -226,10 +268,17 @@
           "image": "/content/ads/moms-q2-b-1d55677f4198.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 29,
+          "b": 71
+        },
+        "emotion": "Relief",
+        "driver": "Specific household pain point she deals with weekly",
+        "reactions": [
+          "Yan ang problema ko tuwing Lunes.",
+          "Subukan ko nga yung sachet."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Moms & Titas · Q3",
@@ -256,10 +305,17 @@
           "image": "/content/ads/moms-q3-b-afbb13421e07.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 35,
+          "b": 65
+        },
+        "emotion": "Security",
+        "driver": "A concrete worst-case scenario, solved with a number",
+        "reactions": [
+          "Ito talaga ang kinakatakot ko.",
+          "Nasaan yung listahan ng hospitals?"
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Moms & Titas · Q4",
@@ -286,10 +342,17 @@
           "image": "/content/ads/moms-q4-b-76de178828d5.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 30,
+          "b": 70
+        },
+        "emotion": "Practical pride",
+        "driver": "Self-funding logic: the purchase “pays for itself,” which is easy to justify to the household",
+        "reactions": [
+          "Mas mababa pa sa kuryente namin.",
+          "Ipakita ko ‘to kay mister."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Moms & Titas · Q5",
@@ -316,10 +379,17 @@
           "image": "/content/ads/moms-q5-b-607716a2a883.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 24,
+          "b": 76
+        },
+        "emotion": "Relief",
+        "driver": "Removes a nightly burden and the guilt that comes with it",
+        "reactions": [
+          "Salamat, hindi ko na rin gets ang bagong Math.",
+          "Sakto, pagod na ako pag gabi."
+        ],
+        "insightSource": "illustrative"
       }
     ]
   },
@@ -358,10 +428,17 @@
           "image": "/content/ads/yp-q1-b-2186d4540659.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 29,
+          "b": 71
+        },
+        "emotion": "Comfort",
+        "driver": "Fits their schedule: built around night shifts",
+        "reactions": [
+          "Sakto sa akong graveyard shift.",
+          "Wala nay pila, nindot."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Young Professionals · Q2",
@@ -388,10 +465,17 @@
           "image": "/content/ads/yp-q2-b-cec14f70a6d8.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 27,
+          "b": 73
+        },
+        "emotion": "Hope",
+        "driver": "Commute-cost anchoring: compared to what they already spend daily",
+        "reactions": [
+          "Mas barato pa diay.",
+          "Dili na ko maghulat og jeep sa Banilad."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Young Professionals · Q3",
@@ -418,10 +502,17 @@
           "image": "/content/ads/yp-q3-b-c20f4cf40024.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 32,
+          "b": 68
+        },
+        "emotion": "Longing",
+        "driver": "Time reclaimed: extra sleep is the real luxury",
+        "reactions": [
+          "Kana jud akong gusto, dugay matulog.",
+          "Pwede ma-view karong Sabado?"
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Young Professionals · Q4",
@@ -448,10 +539,17 @@
           "image": "/content/ads/yp-q4-b-aff071bac682.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 34,
+          "b": 66
+        },
+        "emotion": "Ambition",
+        "driver": "Concrete next step: a promotion path they recognize, with a small time ask",
+        "reactions": [
+          "Mao ni akong plano karong tuiga.",
+          "Kaya ra og usa ka oras."
+        ],
+        "insightSource": "illustrative"
       },
       {
         "brand": "Young Professionals · Q5",
@@ -478,10 +576,17 @@
           "image": "/content/ads/yp-q5-b-c24a5e8e19ba.webp"
         },
         "winner": "b",
-        "split": null,
-        "emotion": null,
-        "driver": null,
-        "reactions": []
+        "split": {
+          "a": 28,
+          "b": 72
+        },
+        "emotion": "Craving",
+        "driver": "Local specificity plus delivery speed",
+        "reactions": [
+          "Gigutom ko kalit.",
+          "Order na ta pag-break."
+        ],
+        "insightSource": "illustrative"
       }
     ]
   }

@@ -20,6 +20,7 @@ interface Player {
   session_expires: number; wants_sim: boolean;
   industry: string | null; challenge: string | null; planning: string | null;
   round_indices: number[] | null;
+  round_swaps: boolean[] | null;
 }
 interface EventRow { id: string; demo: boolean; total_cap: number; awarded_count: number; active_content: string; consent_text: string; consent_version: string; active_prize_day: PrizeDay }
 interface RoundRow { idx: number; started_at: number; locked_at: number | null; reveal: Reveal | null }
@@ -50,7 +51,12 @@ export class GameService {
     return {...c,audiences:c.audiences.map(a=>{
       if(a.id!==p.audience_id)return a;
       if(indices.some(i=>!a.rounds[i]))throw new HttpError(503,'content_missing');
-      return {...a,rounds:indices.map(i=>a.rounds[i])};
+      return {...a,rounds:indices.map((i,idx)=>{
+        const round=a.rounds[i];
+        if(!p.round_swaps?.[idx])return round;
+        return {...round,a:round.b,b:round.a,winner:round.winner==='a'?'b' as const:'a' as const,
+          split:round.split?{a:round.split.b,b:round.split.a}:null};
+      })};
     })};
   }
   async content() {
@@ -161,13 +167,14 @@ export class GameService {
       if (!audience) throw new HttpError(400,'unknown_audience');
       const played=(await this.rounds(p.id,db)).length>0;
       if (p.finished_at || (played && p.audience_id !== audienceId)) throw new HttpError(409,'audience_locked');
-      if(p.audience_id===audienceId && (p.round_indices || played))return this.me(p,db);
+      if(p.audience_id===audienceId)return this.me(p,db);
       const indices=audience.rounds.map((_,i)=>i);
       if(indices.length>3)for(let i=0;i<3;i++){
         const j=randomInt(i,indices.length);
         [indices[i],indices[j]]=[indices[j],indices[i]];
       }
-      const r = await db.query('UPDATE players SET audience_id=$2,round_indices=$3 WHERE id=$1 RETURNING *',[p.id,audienceId,indices.slice(0,3)]);
+      const swaps=Array.from({length:3},()=>randomInt(2)===1);
+      const r = await db.query('UPDATE players SET audience_id=$2,round_indices=$3,round_swaps=$4 WHERE id=$1 RETURNING *',[p.id,audienceId,indices.slice(0,3),swaps]);
       return this.me(r.rows[0],db);
     });
   }
@@ -203,6 +210,7 @@ export class GameService {
       const result: RoundResult = { idx, winner: round.winner, pick, conf, ...score, msUsed };
       const previous = (await this.rounds(p.id,db)).reduce((n,r) => n+(r.reveal?.result.points ?? 0)+(r.reveal?.result.bonus ?? 0),0);
       const reveal: Reveal = { idx, winner: round.winner, split: round.split, emotion: round.emotion, driver: round.driver, surprise: !!round.surprise,
+        ...(round.insightSource?{insightSource:round.insightSource}:{}),
         reactions: round.reactions.map((text,i) => ({ text, respondent: c.respondents[(ai*2+i)%c.respondents.length] })), result, wallet: previous+score.points+score.bonus };
       await db.query('UPDATE rounds SET locked_at=$3,pick=$4,conf=$5,correct=$6,points=$7,bonus=$8,ms_used=$9,reveal=$10 WHERE player_id=$1 AND idx=$2',
         [p.id,idx,this.now(),pick,conf,score.correct,score.points,score.bonus,msUsed,JSON.stringify(reveal)]);

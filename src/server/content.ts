@@ -17,6 +17,7 @@ export function validateContent(audiences: Audience[], respondents: string[]) {
     if (!a.id || !a.name || !a.meta || !Array.isArray(a.chips) || !Array.isArray(a.rounds) || ![3,5].includes(a.rounds.length)) throw new Error('Invalid audience.');
     for (const r of a.rounds) {
       if (!['a','b'].includes(r.winner) || !r.brand || !r.product || !r.objective ||
+          (r.insightSource !== undefined && r.insightSource !== 'illustrative') ||
           !Array.isArray(r.reactions) || ![0,2].includes(r.reactions.length) || r.reactions.some(text=>typeof text!=='string'||!text.trim()) ||
           (r.reactions.length>0 && !respondents.length) ||
           [r.emotion,r.driver].some(text=>text!==null && (typeof text!=='string'||!text.trim()))) throw new Error('Invalid round result.');

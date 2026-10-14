@@ -7,6 +7,9 @@ import { loadSeed } from '../src/server/content';
 import { seedEvent } from '../src/server/seed';
 import { wheelSnapshot } from '../src/shared/prizes';
 import { exportCsv } from '../src/server/csv';
+import type { PublicRound, Side } from '../src/shared/types';
+
+const winningSide=(round:PublicRound):Side=>round.a.image?.includes('-b-')?'a':'b';
 
 const url=process.env.TEST_DATABASE_URL||'postgresql://outguess:outguess@127.0.0.1:5434/outguess';
 const schema=`test_${randomUUID().replaceAll('-','')}`;
@@ -22,10 +25,11 @@ async function register(input=signup(),key=randomUUID()) {
   return service.signup({...input,contentVersion:c.version,consentVersion:c.consentVersion},key);
 }
 async function play(token:string,audience='genz') {
-  await service.audience(token,audience);
+  const selected=await service.audience(token,audience);
+  const rounds=selected.content.audiences.find(a=>a.id===audience)!.rounds;
   for(let i=0;i<3;i++){
     await service.start(token,i);
-    await service.lock(token,i,{pick:'b',conf:2,clientMs:5000});
+    await service.lock(token,i,{pick:winningSide(rounds[i]),conf:2,clientMs:5000});
   }
   return service.finish(token);
 }
@@ -52,15 +56,16 @@ test('registration is idempotent under concurrent retries and rejects reused num
 test('complete game has authoritative scoring, resume and immutable retries',async()=>{
   const {token}=await register();
   await expect(service.start(token,0)).rejects.toMatchObject({code:'out_of_order'});
-  await service.audience(token,'genz');
+  const selected=await service.audience(token,'genz');
+  const rounds=selected.content.audiences.find(a=>a.id==='genz')!.rounds;
   await service.start(token,0);now+=10_000;
   expect((await service.current(token)).startedRound?.elapsedMs).toBe(10_000);
-  const first=await service.lock(token,0,{pick:'b',conf:2,clientMs:1000});
+  const first=await service.lock(token,0,{pick:winningSide(rounds[0]),conf:2,clientMs:1000});
   expect(first.result.bonus).toBe(23);
   expect(await service.lock(token,0,{})).toEqual(first);
   await expect(service.audience(token,'moms')).rejects.toMatchObject({code:'audience_locked'});
   await expect(service.finish(token)).rejects.toMatchObject({code:'rounds_incomplete'});
-  for(const i of [1,2]){await service.start(token,i);now+=5000;await service.lock(token,i,{pick:'b',conf:2,clientMs:5000});}
+  for(const i of [1,2]){await service.start(token,i);now+=5000;await service.lock(token,i,{pick:winningSide(rounds[i]),conf:2,clientMs:5000});}
   const me=await service.finish(token);
   expect(me.score).toBe(673);expect(me.persona).toBe('The Crowd Whisperer');expect(me.reward?.code).toBeTruthy();
   expect(await service.finish(token)).toEqual(me);
@@ -160,8 +165,9 @@ test('published content changes cannot alter an existing player’s reveals',asy
   const changed=structuredClone(c);changed.id='new-version';changed.audiences[0].rounds[0].winner='a';changed.audiences[0].rounds[0].split={a:80,b:20};
   await pool.query('INSERT INTO content_versions(id,audiences,respondents,created_at) VALUES($1,$2,$3,$4)',[changed.id,JSON.stringify(changed.audiences),JSON.stringify(changed.respondents),now]);
   await pool.query('UPDATE events SET active_content=$1',[changed.id]);
-  await service.audience(token,'genz');await service.start(token,0);
-  expect((await service.lock(token,0,{pick:'b',conf:2,clientMs:5000})).winner).toBe('b');
+  const selected=await service.audience(token,'genz');await service.start(token,0);
+  const winner=winningSide(selected.content.audiences.find(a=>a.id==='genz')!.rounds[0]);
+  expect((await service.lock(token,0,{pick:winner,conf:2,clientMs:5000})).winner).toBe(winner);
   expect((await service.current(token)).content.version).toBe(c.id);
 });
 
@@ -279,7 +285,7 @@ test('daily prizes: concurrent day switch and draw cannot consume the wrong day'
 
 test('package odds: stored roles determine weighted draws and saved results never change on retries',async()=>{
   const draws:number[]=[];
-  const biased=new GameService(pool,service.options,()=>now,max=>{draws.push(max);return max===100?99:482;});
+  const biased=new GameService(pool,service.options,()=>now,max=>{draws.push(max);return max===100?99:max>1000?6190:482;});
   const staff=await service.login('4321','role-weight-staff');
   for(const role of ['Marketing Manager','VP of Marketing','Head of Marketing','CMO','Marketing Director']){
     const player=await register({...signup(),role});const finished=await play(player.token);
@@ -302,21 +308,52 @@ test('package odds: stored roles determine weighted draws and saved results neve
 });
 
 
-test.each(['phone','tv'])('ad selection: %s receives three unique stable pairs and confirmed B-only reveals',async source=>{
+test('ad shuffle: saved assignments map winners and splits, reject malformed arrays and preserve NULL games',async()=>{
+  const player=await register();await service.audience(player.token,'genz');
+  await pool.query('UPDATE players SET round_swaps=$2 WHERE id=$1',[player.me.id,[true,false,true]]);
+  const selected=await service.current(player.token);
+  const rounds=selected.content.audiences.find(a=>a.id==='genz')!.rounds;
+  expect(rounds.map(winningSide)).toEqual(['a','b','a']);
+  await Promise.all(Array.from({length:3},async()=>expect((await service.audience(player.token,'genz')).content).toEqual(selected.content)));
+  for(const invalid of [[true,false],[true,null,false]])await expect(pool.query('UPDATE players SET round_swaps=$2 WHERE id=$1',[player.me.id,invalid])).rejects.toMatchObject({code:'23514'});
+  for(let i=0;i<3;i++){
+    await service.start(player.token,i);
+    const winner=winningSide(rounds[i]);
+    const reveal=await service.lock(player.token,i,{pick:winner,conf:2,clientMs:5000});
+    expect(reveal.result.correct).toBe(true);expect(reveal.winner).toBe(winner);expect(reveal.split![winner]).toBeGreaterThan(50);
+    expect(reveal.reactions.every(r=>r.respondent.includes('simulated reaction'))).toBe(true);
+    expect(await service.lock(player.token,i,{pick:winner==='a'?'b':'a',conf:0,clientMs:30_000})).toEqual(reveal);
+    expect((await service.current(player.token)).content).toEqual(selected.content);
+  }
+  expect((await service.finish(player.token)).correct).toBe(3);
+  const oldPlayer=await register();await service.audience(oldPlayer.token,'moms');
+  await pool.query('UPDATE players SET round_swaps=NULL WHERE id=$1',[oldPlayer.me.id]);
+  const old=await service.current(oldPlayer.token);
+  expect(old.content.audiences.find(a=>a.id==='moms')!.rounds.map(winningSide)).toEqual(['b','b','b']);
+  expect((await service.audience(oldPlayer.token,'moms')).content).toEqual(old.content);
+});
+
+test.each(['phone','tv'])('ad selection: %s receives three unique stable pairs with shuffled original-B winners',async source=>{
   const player=await register({...signup(),source});
   const full=(await service.content()).audiences.find(a=>a.id==='genz')!;
   expect(full.rounds).toHaveLength(5);
   const selected=await service.audience(player.token,'genz');
   const rounds=selected.content.audiences.find(a=>a.id==='genz')!.rounds;
-  const indices=(await pool.query('SELECT round_indices FROM players WHERE id=$1',[player.me.id])).rows[0].round_indices as number[];
+  const stored=(await pool.query('SELECT round_indices,round_swaps FROM players WHERE id=$1',[player.me.id])).rows[0];
+  const indices=stored.round_indices as number[],swaps=stored.round_swaps as boolean[];
+  expect(swaps).toHaveLength(3);expect(swaps.every(s=>typeof s==='boolean')).toBe(true);
   expect(indices).toHaveLength(3);expect(new Set(indices).size).toBe(3);expect(indices.every(i=>i>=0&&i<5)).toBe(true);
-  expect(rounds).toEqual(indices.map(i=>full.rounds[i]));
+  expect(rounds).toEqual(indices.map((i,idx)=>swaps[idx]?{...full.rounds[i],a:full.rounds[i].b,b:full.rounds[i].a}:full.rounds[i]));
   expect((await service.audience(player.token,'genz')).content).toEqual(selected.content);
   expect((await service.current(player.token)).content).toEqual(selected.content);
   for(let i=0;i<3;i++){
     await service.start(player.token,i);
-    const reveal=await service.lock(player.token,i,{pick:i===0?'a':'b',conf:2,clientMs:5000});
-    expect(reveal).toMatchObject({winner:'b',split:null,emotion:null,driver:null,reactions:[],result:{correct:i!==0}});
+    const winner=winningSide(rounds[i]);
+    const reveal=await service.lock(player.token,i,{pick:i===0?(winner==='a'?'b':'a'):winner,conf:2,clientMs:5000});
+    const sourceRound=(await loadSeed(true)).content.audiences[0].rounds[indices[i]];
+    expect(reveal).toMatchObject({winner,insightSource:'illustrative',emotion:sourceRound.emotion,driver:sourceRound.driver,result:{correct:i!==0}});
+    expect(reveal.split).toEqual(swaps[i]?{a:sourceRound.split!.b,b:sourceRound.split!.a}:sourceRound.split);
+    expect(reveal.reactions).toHaveLength(2);
     expect(await service.lock(player.token,i,{})).toEqual(reveal);
   }
   await expect(service.start(player.token,3)).rejects.toMatchObject({code:'invalid_round'});
@@ -331,10 +368,12 @@ test('ad selection: legacy games keep original content, order, answers and insig
   const legacy=JSON.parse(await readFile('tests/fixtures/legacy-content.json','utf8'));
   const latest=await loadSeed(true);
   await seedEvent(pool,'test-event',true,{...latest,content:{id:'legacy-ad-import-check',...legacy}});
-  const player=await register();const selected=await service.audience(player.token,'genz');
+  const player=await register();await service.audience(player.token,'genz');
+  // Simulate a player whose game began before round-selection/swap storage existed.
+  await pool.query('UPDATE players SET round_indices=NULL,round_swaps=NULL WHERE id=$1',[player.me.id]);
+  const selected=await service.current(player.token);
+  expect((await service.audience(player.token,'genz')).content).toEqual(selected.content);
   await service.start(player.token,0);
-  // Simulate a player whose game was started before selection storage existed.
-  await pool.query('UPDATE players SET round_indices=NULL WHERE id=$1',[player.me.id]);
   await seedEvent(pool,'test-event',true,latest);
   const resumed=await service.current(player.token);
   expect(resumed.content).toEqual(selected.content);expect(resumed.startedRound?.idx).toBe(0);
