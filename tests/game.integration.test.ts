@@ -5,6 +5,7 @@ import { makePool } from '../src/server/db';
 import { GameService } from '../src/server/service';
 import { loadSeed } from '../src/server/content';
 import { seedEvent } from '../src/server/seed';
+import { wheelSnapshot } from '../src/shared/prizes';
 import { exportCsv } from '../src/server/csv';
 
 const url=process.env.TEST_DATABASE_URL||'postgresql://outguess:outguess@127.0.0.1:5434/outguess';
@@ -24,7 +25,7 @@ async function play(token:string,audience='genz') {
   await service.audience(token,audience);
   for(let i=0;i<3;i++){
     await service.start(token,i);
-    await service.lock(token,i,{pick:i===2?'a':'b',conf:2,clientMs:5000});
+    await service.lock(token,i,{pick:'b',conf:2,clientMs:5000});
   }
   return service.finish(token);
 }
@@ -59,7 +60,7 @@ test('complete game has authoritative scoring, resume and immutable retries',asy
   expect(await service.lock(token,0,{})).toEqual(first);
   await expect(service.audience(token,'moms')).rejects.toMatchObject({code:'audience_locked'});
   await expect(service.finish(token)).rejects.toMatchObject({code:'rounds_incomplete'});
-  for(const i of [1,2]){await service.start(token,i);now+=5000;await service.lock(token,i,{pick:i===2?'a':'b',conf:2,clientMs:5000});}
+  for(const i of [1,2]){await service.start(token,i);now+=5000;await service.lock(token,i,{pick:'b',conf:2,clientMs:5000});}
   const me=await service.finish(token);
   expect(me.score).toBe(673);expect(me.persona).toBe('The Crowd Whisperer');expect(me.reward?.code).toBeTruthy();
   expect(await service.finish(token)).toEqual(me);
@@ -273,4 +274,77 @@ test('daily prizes: concurrent day switch and draw cannot consume the wrong day'
   expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
   const rejected=results.find(r=>r.status==='rejected');expect(rejected?.status==='rejected'&&rejected.reason.code).toBe('inventory_changed');
   const inventory=await service.inventory();expect(inventory.days[1].fulfilled).toBe(0);
+});
+
+
+test('package odds: stored roles determine weighted draws and saved results never change on retries',async()=>{
+  const draws:number[]=[];
+  const biased=new GameService(pool,service.options,()=>now,max=>{draws.push(max);return max===100?99:482;});
+  const staff=await service.login('4321','role-weight-staff');
+  for(const role of ['Marketing Manager','VP of Marketing','Head of Marketing','CMO','Marketing Director']){
+    const player=await register({...signup(),role});const finished=await play(player.token);
+    const before=await service.inventory();
+    const result=await biased.claim(staff,finished.reward!.code!,{day:1,confirmedNumber:true,fulfillmentConfirmed:true,role:role==='Marketing Manager'?'CMO':'Marketing Manager'});
+    const expectedId=role==='Marketing Manager'?'gcash_100':'predikta_package';
+    expect(result.prize?.id).toBe(expectedId);
+    expect(result.wheel).toEqual(wheelSnapshot(before.items,expectedId,role));
+    const snapshot=(await pool.query('SELECT wheel_snapshot FROM claims WHERE code=$1',[result.code])).rows[0].wheel_snapshot;
+    expect(snapshot).toEqual(result.wheel);
+    const calls=draws.length;
+    const replay=await biased.claim(staff,result.code,{day:2,confirmedNumber:true,fulfillmentConfirmed:true,role:'CMO'});
+    expect(replay).toMatchObject({replayed:true,prizeDay:1,prize:{id:expectedId}});
+    expect(draws).toHaveLength(calls);
+    expect((await service.current(player.token)).reward?.prize?.id).toBe(expectedId);
+  }
+  const inventory=await service.inventory();
+  expect(inventory.fulfilled).toBe(5);expect(inventory.items.find(p=>p.id==='predikta_package')?.remaining).toBe(1);
+  expect(inventory.days[1].remaining).toBe(155);
+});
+
+
+test.each(['phone','tv'])('ad selection: %s receives three unique stable pairs and confirmed B-only reveals',async source=>{
+  const player=await register({...signup(),source});
+  const full=(await service.content()).audiences.find(a=>a.id==='genz')!;
+  expect(full.rounds).toHaveLength(5);
+  const selected=await service.audience(player.token,'genz');
+  const rounds=selected.content.audiences.find(a=>a.id==='genz')!.rounds;
+  const indices=(await pool.query('SELECT round_indices FROM players WHERE id=$1',[player.me.id])).rows[0].round_indices as number[];
+  expect(indices).toHaveLength(3);expect(new Set(indices).size).toBe(3);expect(indices.every(i=>i>=0&&i<5)).toBe(true);
+  expect(rounds).toEqual(indices.map(i=>full.rounds[i]));
+  expect((await service.audience(player.token,'genz')).content).toEqual(selected.content);
+  expect((await service.current(player.token)).content).toEqual(selected.content);
+  for(let i=0;i<3;i++){
+    await service.start(player.token,i);
+    const reveal=await service.lock(player.token,i,{pick:i===0?'a':'b',conf:2,clientMs:5000});
+    expect(reveal).toMatchObject({winner:'b',split:null,emotion:null,driver:null,reactions:[],result:{correct:i!==0}});
+    expect(await service.lock(player.token,i,{})).toEqual(reveal);
+  }
+  await expect(service.start(player.token,3)).rejects.toMatchObject({code:'invalid_round'});
+  const finished=await service.finish(player.token);expect(finished.rounds).toHaveLength(3);expect(finished.correct).toBe(2);
+  const inventory=await service.inventory();
+  await seedEvent(pool,'test-event',true,await loadSeed(true));
+  expect((await service.current(player.token)).content).toEqual(selected.content);
+  expect(await service.inventory()).toEqual(inventory);
+});
+
+test('ad selection: legacy games keep original content, order, answers and insights after reseeding',async()=>{
+  const legacy=JSON.parse(await readFile('tests/fixtures/legacy-content.json','utf8'));
+  const latest=await loadSeed(true);
+  await seedEvent(pool,'test-event',true,{...latest,content:{id:'legacy-ad-import-check',...legacy}});
+  const player=await register();const selected=await service.audience(player.token,'genz');
+  await service.start(player.token,0);
+  // Simulate a player whose game was started before selection storage existed.
+  await pool.query('UPDATE players SET round_indices=NULL WHERE id=$1',[player.me.id]);
+  await seedEvent(pool,'test-event',true,latest);
+  const resumed=await service.current(player.token);
+  expect(resumed.content).toEqual(selected.content);expect(resumed.startedRound?.idx).toBe(0);
+  expect((await service.audience(player.token,'genz')).content).toEqual(selected.content);
+  for(let i=0;i<3;i++){
+    if(i>0)await service.start(player.token,i);
+    const old=legacy.audiences[0].rounds[i];
+    const reveal=await service.lock(player.token,i,{pick:old.winner,conf:2,clientMs:5000});
+    expect(reveal.winner).toBe(old.winner);expect(reveal.split).toEqual(old.split);
+    expect(reveal.emotion).toBe(old.emotion);expect(reveal.reactions).toHaveLength(2);
+  }
+  const finished=await service.finish(player.token);expect(finished.correct).toBe(3);expect(finished.reward?.code).toBeTruthy();
 });

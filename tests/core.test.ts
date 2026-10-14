@@ -1,9 +1,10 @@
 import { describe,test,expect } from 'vitest';
 import { scoreRound,personaOf,summarize,MAX_SCORE } from '../src/shared/rules';
+import { DAILY_QUANTITIES, PRIZES, isMarketingLeader, wheelSnapshot } from '../src/shared/prizes';
 import { validateSignup } from '../src/shared/validation';
 import { signToken,verifyToken } from '../src/server/auth';
 import { exportCsv,safeCell } from '../src/server/csv';
-import { scheduleRows,loadSeed,publicContent,manilaStart } from '../src/server/content';
+import { scheduleRows,loadSeed,publicContent,manilaStart,validateContent } from '../src/server/content';
 
 describe('game rules',()=>{
   test('the entire scoring table, including zero-point all-in errors',()=>{
@@ -47,16 +48,52 @@ test('CSV guards formulas, quotes, UTF-8 and excludes nonclaims',()=>{
   expect(exportCsv([{name:'=A1',company:'A,"B"',mobile:'09171234567'}])).toContain('"\'=A1"');
   expect(exportCsv([{name:'Nonclaim'}],true)).not.toContain('Nonclaim');
 });
-test('demo content hides answers and retains nine ad pairs',async()=>{
+test('ad import: public content hides answers and retains all fifteen supplied pairs',async()=>{
   const seed=await loadSeed(true);
   const c=publicContent(seed.content,'https://example.com',true,seed.consentText,seed.consentVersion);
   const text=JSON.stringify(c);
   for(const k of ['"winner"','"split"','"emotion"','"driver"','"reactions"','"surprise"'])expect(text).not.toContain(k);
-  expect(c.audiences.reduce((n,a)=>n+a.rounds.length,0)).toBe(9);
+  expect(c.audiences.reduce((n,a)=>n+a.rounds.length,0)).toBe(15);
 });
 test('schedule rejects overallocations and overlap; day uses Manila timezone',()=>{
   expect(()=>scheduleRows({totalCap:301,days:['2026-11-11'],blocks:[{start:'10:00',end:'12:00',allocation:301}]})).toThrow();
   expect(()=>scheduleRows({totalCap:300,days:['2026-11-11','2026-11-12'],blocks:[{start:'10:00',end:'12:00',allocation:200}]})).toThrow();
   expect(()=>scheduleRows({totalCap:300,days:['2026-11-11'],blocks:[{start:'10:00',end:'12:00',allocation:100},{start:'11:00',end:'13:00',allocation:100}]})).toThrow();
   expect(manilaStart(Date.parse('2026-11-11T17:00:00Z'))).toBe(Date.parse('2026-11-12T00:00:00+08:00'));
+});
+
+
+test('package odds: marketing title variants qualify but near-matches do not',()=>{
+  for(const role of ['VP of Marketing','vice president of marketing','VP Marketing','Vice President Marketing','Marketing VP','Head of Marketing','Marketing Head','CMO','Chief Marketing Officer','Marketing Director','Director of Marketing','  V.P.,   MARKETING  ','Vice-President of Marketing','Head—of—Marketing','C.M.O.'])expect(isMarketingLeader(role),role).toBe(true);
+  for(const role of ['Director','VP','Head','Marketing Manager','Assistant VP of Marketing','Assistant to the Head of Marketing','Former CMO','CMO assistant','Director of Sales','Marketing Director at Example','', 'VP of Marketing / Assistant'])expect(isMarketingLeader(role),role).toBe(false);
+});
+
+test('package odds: balanced probabilities preserve no-prize and handle depleted stock',()=>{
+  const stock=PRIZES.map(p=>({...p,total:DAILY_QUANTITIES[p.id],fulfilled:0,remaining:DAILY_QUANTITIES[p.id]}));
+  const ordinary=wheelSnapshot(stock,'','Marketing Manager');const leader=wheelSnapshot(stock,'','Head of Marketing');
+  expect(ordinary.items.find(p=>p.id==='predikta_package')?.probability).toBeCloseTo(.85*5/605,8);
+  expect(leader.items.find(p=>p.id==='predikta_package')?.probability).toBeCloseTo(.85*40/640,8);
+  for(const result of [ordinary,leader]){expect(result.items[0].probability).toBe(.15);expect(result.items.reduce((n,p)=>n+p.probability,0)).toBeCloseTo(1);}
+  const noPackages=stock.map(p=>p.id==='predikta_package'?{...p,remaining:0}:p);
+  expect(wheelSnapshot(noPackages,'','CMO').items.some(p=>p.id==='predikta_package')).toBe(false);
+  expect(wheelSnapshot(noPackages,'','CMO')).toEqual(wheelSnapshot(noPackages,'','Marketing Manager'));
+  const packageOnly=stock.filter(p=>p.id==='predikta_package');
+  for(const role of ['Marketing Manager','CMO'])expect(wheelSnapshot(packageOnly,'',role).items.map(p=>p.probability)).toEqual([.15,.85]);
+  expect(wheelSnapshot([], '', 'CMO').items).toEqual([]);
+});
+
+
+test('ad import: winner-only content has real images and no fabricated insights',async()=>{
+  const seed=await loadSeed(true);
+  expect(seed.content.respondents).toEqual([]);
+  for(const audience of seed.content.audiences){
+    expect(audience.rounds).toHaveLength(5);
+    for(const round of audience.rounds){
+      expect(round).toMatchObject({winner:'b',split:null,emotion:null,driver:null,reactions:[]});
+      expect(round.a.image).toMatch(/-a-[a-f0-9]{12}\.webp$/);
+      expect(round.b.image).toMatch(/-b-[a-f0-9]{12}\.webp$/);
+    }
+  }
+  const invalid=structuredClone(seed.content.audiences);invalid[0].rounds[0].split={a:50,b:50};
+  expect(()=>validateContent(invalid,[])).toThrow('Invalid preference split');
 });

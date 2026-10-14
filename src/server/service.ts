@@ -7,7 +7,7 @@ import { publicContent, manilaStart, type StoredContent } from './content';
 import { scoreRound, summarize, ROUND_MS } from '../shared/rules';
 import { CLAIM_CODE_PATTERN, normalizeClaimCode, validStaffPin, validateCampaign, validateSignup } from '../shared/validation';
 import type { Board, ConfIdx, FulfillResult, Me, Prize, PrizeDay, PrizeDayStock, PrizeInventory, PrizeStock, DrawOutcome, Reveal, RoundResult, Side, StaffClaim } from '../shared/types';
-import { isPrizeDay, MAX_PRIZE_QUANTITY, NO_PRIZE_ID, NO_PRIZE_PERCENT, PRIZES, wheelSnapshot } from '../shared/prizes';
+import { isPrizeDay, MAX_PRIZE_QUANTITY, NO_PRIZE_ID, NO_PRIZE_PERCENT, PRIZES, prizeWeights, wheelSnapshot } from '../shared/prizes';
 
 type Db = Pool | PoolClient;
 export class HttpError extends Error {
@@ -19,6 +19,7 @@ interface Player {
   audience_id: string | null; score: number | null; correct: number | null; persona: Me['persona']; finished_at: number | null;
   session_expires: number; wants_sim: boolean;
   industry: string | null; challenge: string | null; planning: string | null;
+  round_indices: number[] | null;
 }
 interface EventRow { id: string; demo: boolean; total_cap: number; awarded_count: number; active_content: string; consent_text: string; consent_version: string; active_prize_day: PrizeDay }
 interface RoundRow { idx: number; started_at: number; locked_at: number | null; reveal: Reveal | null }
@@ -43,6 +44,14 @@ export class GameService {
     const c = (await db.query('SELECT * FROM content_versions WHERE id=$1',[id])).rows[0];
     if (!c) throw new HttpError(503,'content_missing');
     return c;
+  }
+  private gameContent(p: Player, c: StoredContent): StoredContent {
+    const indices=p.round_indices??[0,1,2];
+    return {...c,audiences:c.audiences.map(a=>{
+      if(a.id!==p.audience_id)return a;
+      if(indices.some(i=>!a.rounds[i]))throw new HttpError(503,'content_missing');
+      return {...a,rounds:indices.map(i=>a.rounds[i])};
+    })};
   }
   async content() {
     const e = await this.event();
@@ -103,7 +112,7 @@ export class GameService {
   }
   async me(p: Player, db: Db = this.pool): Promise<Me> {
     const e = await this.event(db);
-    const c = await this.storedContent(p.content_version,db);
+    const c = this.gameContent(p,await this.storedContent(p.content_version,db));
     const rows = await this.rounds(p.id,db);
     const results = rows.filter(r => r.reveal).map(r => r.reveal!.result);
     const open = rows.find(r => !r.locked_at);
@@ -148,9 +157,17 @@ export class GameService {
     return transaction(this.pool,async db => {
       const p = await this.player(token,db,true);
       const c = await this.storedContent(p.content_version,db);
-      if (!c.audiences.some(a => a.id === audienceId)) throw new HttpError(400,'unknown_audience');
-      if (p.finished_at || ((await this.rounds(p.id,db)).length && p.audience_id !== audienceId)) throw new HttpError(409,'audience_locked');
-      const r = await db.query('UPDATE players SET audience_id=$2 WHERE id=$1 RETURNING *',[p.id,audienceId]);
+      const audience=c.audiences.find(a => a.id === audienceId);
+      if (!audience) throw new HttpError(400,'unknown_audience');
+      const played=(await this.rounds(p.id,db)).length>0;
+      if (p.finished_at || (played && p.audience_id !== audienceId)) throw new HttpError(409,'audience_locked');
+      if(p.audience_id===audienceId && (p.round_indices || played))return this.me(p,db);
+      const indices=audience.rounds.map((_,i)=>i);
+      if(indices.length>3)for(let i=0;i<3;i++){
+        const j=randomInt(i,indices.length);
+        [indices[i],indices[j]]=[indices[j],indices[i]];
+      }
+      const r = await db.query('UPDATE players SET audience_id=$2,round_indices=$3 WHERE id=$1 RETURNING *',[p.id,audienceId,indices.slice(0,3)]);
       return this.me(r.rows[0],db);
     });
   }
@@ -175,7 +192,7 @@ export class GameService {
       if (row.reveal) return row.reveal;
       if (body.pick !== null && body.pick !== 'a' && body.pick !== 'b') throw new HttpError(400,'invalid_pick');
       if (![0,1,2].includes(body.conf as number) || typeof body.clientMs !== 'number' || !Number.isFinite(body.clientMs) || body.clientMs < 0) throw new HttpError(400,'invalid_confidence_or_time');
-      const c = await this.storedContent(p.content_version,db);
+      const c = this.gameContent(p,await this.storedContent(p.content_version,db));
       const ai = c.audiences.findIndex(a => a.id === p.audience_id);
       const round = c.audiences[ai].rounds[idx];
       const serverMs = Math.max(0,this.now()-row.started_at);
@@ -321,11 +338,12 @@ export class GameService {
       if(!items.length)throw new HttpError(409,'out_of_stock');
       let prize: PrizeStock | null = null;
       if (this.drawRandom(100) >= NO_PRIZE_PERCENT) {
-        let ticket=this.drawRandom(inventory.remaining);
-        prize=items.find(p=>{ticket-=p.remaining;return ticket<0;})!;
+        const weighted=prizeWeights(items,existing.role);
+        let ticket=this.drawRandom(weighted.reduce((n,p)=>n+p.weight,0));
+        prize=weighted.find(p=>{ticket-=p.weight;return ticket<0;})!.prize;
         await db.query('UPDATE daily_prize_inventory SET fulfilled=fulfilled+1 WHERE event_id=$1 AND day=$2 AND prize_id=$3',[this.options.eventId,inventory.activeDay,prize.id]);
       }
-      const wheel=wheelSnapshot(items,prize?.id??NO_PRIZE_ID);
+      const wheel=wheelSnapshot(items,prize?.id??NO_PRIZE_ID,existing.role);
       await db.query('UPDATE claims SET prize_id=$3,wheel_snapshot=$4,claimed_at=$5,staff_session=$6,draw_outcome=$7,prize_day=$8 WHERE code=$1 AND event_id=$2',
         [clean,this.options.eventId,prize?.id??null,JSON.stringify(wheel),this.now(),staff,prize?'prize':'no_prize',inventory.activeDay]);
       await db.query('UPDATE events SET inventory_revision=inventory_revision+1 WHERE id=$1',[this.options.eventId]);

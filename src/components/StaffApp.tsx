@@ -145,7 +145,7 @@ export function StaffApp() {
         {claim&&<div className="pcard"><dl className="kv"><dt>Player</dt><dd>{claim.name}</dd><dt>Company</dt><dd>{claim.company} · {claim.role}</dd><dt>Business number</dt><dd className="num">{claim.mobile}</dd><dt>Code</dt><dd className="num">{claim.code}</dd><dt>Score</dt><dd>{fmt(claim.score??0)} · {claim.persona}</dd><dt>Status</dt><dd>{claim.outcome==='no_prize'?'Draw complete — no prize':claim.claimed?`Fulfilled ${claim.claimedAt?manilaTime(claim.claimedAt):''}`:'Awaiting prize draw'}{claim.prizeDay&&` · Day ${claim.prizeDay}`}</dd></dl>
           {revealing&&<p className="small muted" role="status">{wheel?'Revealing the saved result…':'Drawing…'}</p>}
           {wheel&&<PrizeWheel result={wheel} />}
-          {!wheel&&!claim.claimed&&!!summary?.inventory.remaining&&<PrizeWheel animate={false} result={wheelSnapshot(summary.inventory.items)} />}
+          {!wheel&&!claim.claimed&&!!summary?.inventory.remaining&&<PrizeWheel animate={false} result={wheelSnapshot(summary.inventory.items,'',claim.role)} />}
           {claim.claimed&&!revealing&&<div className="prize-result" role="status"><span className="eyebrow">{claim.outcome==='no_prize'?'Draw complete':'Prize fulfilled'}</span><h3>{claim.outcome==='no_prize'?NO_PRIZE_LABEL:claim.prize?.name??'Previously fulfilled · historical record'}</h3>
             {claim.outcome==='no_prize'&&<p className="small muted">No prize this time. This draw is complete and cannot be spun again.</p>}
             {claim.prize?.valuePhp&&<p className="small muted">Worth PHP {fmt(claim.prize.valuePhp)}. Arrange package redemption with booth staff.</p>}

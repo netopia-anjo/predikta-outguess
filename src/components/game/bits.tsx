@@ -36,7 +36,7 @@ export function AdCard({ ad, brand, label, cls = '', onClick, pressed, inert }: 
           <i className="sh s3" />
         </>
       )}
-      <span className="brand">{brand}</span>
+      {!ad.image && <span className="brand">{brand}</span>}
       <span className="lab">{label}</span>
       {!ad.image && (
         <>

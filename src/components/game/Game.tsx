@@ -6,6 +6,7 @@ import type { Board, ConfIdx, ContentPayload, Me, PrizeInventory, Reveal, Side }
 import { CONF, PERSONAS, ROUND_SECS } from '../../shared/rules';
 import { CHALLENGES, PLANNING, SIGNUP_LIMITS, normalizeMobile, validateCampaign, validateSignup, type CampaignInput, type SignupErrors, type SignupInput } from '../../shared/validation';
 import { api, ApiError } from '../../lib/api';
+import { preloadRoundAds } from '@/lib/ad-images';
 import { fmt } from '../../lib/hooks';
 import { AdCard, Brand, Dots, Qr, SplitBar, Wallet } from './bits';
 import { MobileInput } from './MobileInput';
@@ -240,7 +241,13 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
 
   async function startRound(i: number) {
     patch({ busy: true });
+    const epoch = generation.current;
     try {
+      const me = ref.current.me;
+      const next = me?.content.audiences.find(a => a.id === me.audienceId)?.rounds[i];
+      if (!next) throw new Error('ad_image_unavailable');
+      await preloadRoundAds(next);
+      if (epoch !== generation.current) return;
       const { elapsedMs, locked } = await call<{ elapsedMs: number; locked: boolean }>(`/api/game/rounds/${i}/start`, {});
       if (locked) return sendLock(i, {});
       const pending = pendingLock.current;
@@ -251,7 +258,8 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
       });
       toTop();
     } catch (e) {
-      fail(e, 'Could not start the round.', () => startRound(i));
+      if (epoch !== generation.current) return;
+      fail(e, e instanceof Error && e.message === 'ad_image_unavailable' ? 'Could not load the ads. Check your connection and tap Retry.' : 'Could not start the round.', () => startRound(i));
     }
   }
 
@@ -435,7 +443,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
             <br />
             <em>the crowd.</em>
           </h1>
-          <p>Think you know Filipino consumers better? Pick the ad the audience prefers. Reveal audience preferences and reactions.</p>
+          <p>Think you know Filipino consumers better? Pick the ad the audience prefers. Reveal the winning ad and your score.</p>
         </div>
         <div className="facts">
           <div className="fact"><b>3</b><span>rounds</span></div>
@@ -445,7 +453,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
         <div className="gcleft prize-value-banner">
           <span><b>PHP {prizes ? fmt(prizes.packagePoolValuePhp) : '–'}</b> worth of Digicon × Predikta Packages across both days</span>
         </div>
-        <p className="small muted" style={{margin:0}}>Finish all 3 rounds to get a chance to win a prize. Day {prizes?.activeDay??'–'} prizes, while supplies last. A 15% chance of no prize applies.{prizes?.remaining === 0 && ' Prizes currently unavailable.'}</p>
+        <p className="small muted" style={{margin:0}}>Finish all 3 rounds to get a chance to win a prize. While supplies last.{prizes?.remaining === 0 && ' Prizes currently unavailable.'}</p>
         <div className="spacer" />
         <button className="btn spark" disabled={s.busy || !!s.token} onClick={() => go('signup')}>
           {s.token ? 'Resuming your game…' : variant === 'tv' ? 'Tap to play here' : 'Start playing'}
@@ -596,7 +604,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
         <ol className="steps">
           <li><span>You’ll see a target audience and two ads.</span></li>
           <li><span>Pick the one they’ll prefer. Set your confidence.</span></li>
-          <li><span>Reveal audience preferences and reactions.</span></li>
+          <li><span>Reveal the winning ad and your score.</span></li>
         </ol>
         <table className="ptable">
           <thead><tr><th>Points</th>{CONF.map((c) => <th key={c.label}>{c.label}</th>)}</tr></thead>
@@ -696,18 +704,19 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
           ))}
         </div>
         <div className="rs">
-          <div className="split">
+          {rv.split && <div className="split">
             <span className="eyebrow">Audience preference</span>
             <SplitBar winner={rv.winner} split={rv.split} />
-          </div>
+          </div>}
           <div className="insight">
-            <div><span className="eyebrow">Top emotion</span><b>{rv.emotion}</b></div>
+            <div><span className="eyebrow">Winning ad</span><b>Ad {rv.winner.toUpperCase()}</b></div>
             <div><span className="eyebrow">Your pick</span><b>{res.pick ? `Ad ${res.pick.toUpperCase()} · ${CONF[res.conf].label}` : 'No pick'}</b></div>
-            <div className="full"><span className="eyebrow">Behavioral driver</span><b style={{ fontWeight: 500 }}>{rv.driver}</b></div>
+            {rv.emotion && <div><span className="eyebrow">Top emotion</span><b>{rv.emotion}</b></div>}
+            {rv.driver && <div className="full"><span className="eyebrow">Behavioral driver</span><b style={{ fontWeight: 500 }}>{rv.driver}</b></div>}
           </div>
-          <div className="bubbles">
+          {!!rv.reactions.length && <div className="bubbles">
             {rv.reactions.map((r) => <div className="bub" key={r.text}>{r.text}<small>{r.respondent}</small></div>)}
-          </div>
+          </div>}
         </div>
         <button className="btn" disabled={s.busy} onClick={() => (rv.idx < 2 ? startRound(rv.idx + 1) : finish())}>
           {rv.idx < 2 ? 'Next round' : 'See my results'}
@@ -725,7 +734,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
           <div className="score">
             <span className="eyebrow">Marketer Instinct Score</span>
             <span className="big">{fmt(me.score ?? 0)}</span>
-            <div className="row"><span>You matched the simulated audience on {me.correct} of 3</span></div>
+            <div className="row"><span>You matched the winning ad on {me.correct} of 3</span></div>
           </div>
           <div className="persona">
             <span className="eyebrow">Your persona</span>
@@ -739,7 +748,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
               {me.rounds.map((r) => (
                 <tr key={r.idx}>
                   <td>{audience?.rounds[r.idx].brand}</td>
-                  <td>{r.pick ? `You: ${r.pick.toUpperCase()}` : 'No pick'} · Crowd: {r.winner.toUpperCase()}</td>
+                  <td>{r.pick ? `You: ${r.pick.toUpperCase()}` : 'No pick'} · Winner: {r.winner.toUpperCase()}</td>
                   <td className={r.correct ? 'ok-t' : 'no-t'}>+{r.points + r.bonus}</td>
                 </tr>
               ))}
@@ -777,7 +786,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
           {reward.legacy && <span className="small muted">Previously fulfilled · historical record</span>}
         </> : <>
           <span className="status wait"><i />Waiting for staff</span>
-          <p className="small muted" style={{margin:0}}>Show your QR to staff for a chance to win a prize. A 15% no-prize chance applies. Available while daily supplies last.</p>
+          <p className="small muted" style={{margin:0}}>Show your QR to staff for a chance to win a prize. While supplies last.</p>
           {prizes?.remaining === 0 && <p className="small muted" style={{margin:0}}>Prizes are currently out of stock. Your score and claim code are saved.</p>}
         </>}
         <p className="small">Want to know more? <a className="linkish" href={content.contactUrl} target="_blank" rel="noopener noreferrer">Click here</a></p>

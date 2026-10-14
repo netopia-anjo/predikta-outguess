@@ -11,16 +11,19 @@ export const manilaStart = (now: number) => Date.parse(`${manilaDate(now)}T00:00
 export interface Schedule { totalCap: number; days: string[]; blocks: { start: string; end: string; allocation: number }[] }
 export interface StoredContent { id: string; audiences: Audience[]; respondents: string[] }
 export function validateContent(audiences: Audience[], respondents: string[]) {
-  if (!Array.isArray(audiences) || audiences.length !== 3 || !respondents.length) throw new Error('Content requires three audiences and respondent labels.');
+  if (!Array.isArray(audiences) || audiences.length !== 3 || !Array.isArray(respondents) || respondents.some(r=>typeof r!=='string'||!r.trim())) throw new Error('Content requires three audiences and valid respondent labels.');
   if (new Set(audiences.map(a => a.id)).size !== 3) throw new Error('Audience IDs must be unique.');
   for (const a of audiences) {
-    if (!a.id || !a.name || !a.meta || !Array.isArray(a.chips) || a.rounds.length !== 3) throw new Error('Invalid audience.');
+    if (!a.id || !a.name || !a.meta || !Array.isArray(a.chips) || !Array.isArray(a.rounds) || ![3,5].includes(a.rounds.length)) throw new Error('Invalid audience.');
     for (const r of a.rounds) {
-      if (!['a','b'].includes(r.winner) || !Number.isFinite(r.split.a) || !Number.isFinite(r.split.b) ||
-          r.split.a <= 0 || r.split.b <= 0 || r.split.a + r.split.b !== 100 || r.split[r.winner] <= 50 ||
-          !r.emotion || !r.driver || !r.brand || !r.product || !r.objective || r.reactions.length !== 2) throw new Error('Invalid round result.');
+      if (!['a','b'].includes(r.winner) || !r.brand || !r.product || !r.objective ||
+          !Array.isArray(r.reactions) || ![0,2].includes(r.reactions.length) || r.reactions.some(text=>typeof text!=='string'||!text.trim()) ||
+          (r.reactions.length>0 && !respondents.length) ||
+          [r.emotion,r.driver].some(text=>text!==null && (typeof text!=='string'||!text.trim()))) throw new Error('Invalid round result.');
+      if (r.split !== null && (!r.split || !Number.isFinite(r.split.a) || !Number.isFinite(r.split.b) ||
+          r.split.a <= 0 || r.split.b <= 0 || r.split.a + r.split.b !== 100 || r.split[r.winner] <= 50)) throw new Error('Invalid preference split.');
       for (const ad of [r.a,r.b]) {
-        if (!ad.copy || !ad.visual || (ad.image && !/^\/content\/ads\/[\w.-]+\.(webp|png|jpe?g)$/i.test(ad.image))) throw new Error('Invalid ad.');
+        if (!ad.copy || !ad.visual || (ad.image !== undefined && (typeof ad.image!=='string' || !/^\/content\/ads\/[\w.-]+\.(webp|png|jpe?g)$/i.test(ad.image)))) throw new Error('Invalid ad.');
       }
     }
   }
@@ -45,7 +48,7 @@ export async function loadSeed(demo: boolean) {
   const id = createHash('sha256').update(JSON.stringify({ audiences, respondents })).digest('hex');
   const approval = demo ? { consentVersion: CONSENT_VERSION, consentText: CONSENT_TEXT } : await read('approval.json');
   if (!demo && (!approval.approved || !approval.consentVersion || !approval.consentText || !approval.contentApproved || audiences.some(a => a.rounds.some(r => !r.a.image || !r.b.image)))) throw new Error('Production seed requires approved content and consent in content/approval.json.');
-  if (!demo) for (const a of audiences) for (const r of a.rounds) for (const ad of [r.a,r.b]) await readFile(join(process.cwd(), 'public', ad.image!.slice(1)));
+  for (const a of audiences) for (const r of a.rounds) for (const ad of [r.a,r.b]) if (ad.image) await readFile(join(process.cwd(), 'public', ad.image.slice(1)));
   return { content: { id, audiences, respondents }, consentVersion: approval.consentVersion as string, consentText: approval.consentText as string };
 }
 export function publicContent(c: StoredContent, publicUrl: string, demo: boolean, consentText: string, consentVersion: string,
