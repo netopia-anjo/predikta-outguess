@@ -15,5 +15,5 @@ export function config() {
   if (!demo && url.protocol !== 'https:') throw new Error('Production PUBLIC_URL must use HTTPS.');
   return { demo, secret, staffPin, publicUrl: url.origin, eventId: EVENT_ID,
     contactUrl: externalUrl(process.env.ADSPARK_CONTACT_URL, 'https://www.adspark.ph/get-in-touch')!,
-    privacyPolicyUrl: externalUrl(process.env.ADSPARK_PRIVACY_POLICY_URL, null) };
+    privacyPolicyUrl: externalUrl(process.env.ADSPARK_PRIVACY_POLICY_URL, 'https://www.adspark.ph/privacy-policy') };
 }

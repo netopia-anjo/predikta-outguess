@@ -4,6 +4,7 @@ import { Game } from './game/Game';
 import { Brand,Qr } from './game/bits';
 import { fmt,useBoard,useContent } from '@/lib/hooks';
 import { api,ApiError } from '@/lib/api';
+import { PRIZES } from '@/shared/prizes';
 import { validStaffPin } from '@/shared/validation';
 export function TvApp() {
   const [auth,setAuth]=useState<'checking'|'out'|'in'>('checking');
@@ -49,12 +50,12 @@ function TvScreen({onAccessDenied,onLock,busy,message}:{onAccessDenied:()=>void;
       <h1>Outguess<br/><em>the crowd.</em></h1>
       <div className="tvcard tvqr">{content&&<Qr text={content.joinUrl} label="Scan to play on your phone"/>}<div><b>Scan to play</b><span>Or tap the screen to play here.</span></div></div>
       <div className="tvcard tv-prizes">
+        <span className="eyebrow">Day {board?.prizes.activeDay??'–'} prizes</span>
         <div className="tvgc prize-value-banner"><b>PHP {board ? fmt(board.prizes.cashRemainingPhp) : '–'}</b><span>GCash up for grabs today</span></div>
         <ul className="tv-merch-stock" aria-label="Remaining merchandise">
-          {['cellphone_holder','tote_bag','pencil_holder'].map(id=>{
-            const item=board?.prizes.items.find(p=>p.id===id);
-            const names:Record<string,string>={cellphone_holder:'Cellphone Holder',tote_bag:'Tote Bag',pencil_holder:'Pencil Holder'};
-            return <li key={id}><span>{item?.name??names[id]}</span><b>{item?fmt(item.remaining):'–'}</b></li>;
+          {PRIZES.filter(prize=>prize.amountPhp===null).map(prize=>{
+            const item=board?.prizes.items.find(p=>p.id===prize.id);
+            return <li key={prize.id}><span>{prize.name}{prize.valuePhp&&<small>Worth PHP {fmt(prize.valuePhp)} each</small>}</span><b>{item?fmt(item.remaining):'–'}</b></li>;
           })}
         </ul>
       </div>

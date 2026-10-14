@@ -372,3 +372,35 @@ textarea.csv { background: rgba(4, 10, 42, .55); color: #fff; border-color: var(
   .tvgc.prize-value-banner b { font-size: 1.9cqw; }
   .tvgc.prize-value-banner span { font-size: 1cqw; }
 }
+
+/* Daily stock and the permanent no-prize wheel outcome. */
+.inventory-day-controls, .inventory-days { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.inventory-day-controls { margin-bottom:8px; }
+.inventory-days button[aria-pressed=true] { border-color:var(--cyan); color:var(--cyan); background:rgba(63,224,255,.09); }
+.inventory-day-controls > .btn { width:auto; padding:10px 16px; }
+.tv-merch-stock li > span { min-width:0; }
+.tv-merch-stock small { display:block; color:var(--muted); font-size:.8em; }
+.merch-fact b { font-size:clamp(14px,1.5cqw,24px); line-height:1.2; }
+@media (max-width:599px) {
+  .prize-wheel-legend li { flex-wrap:wrap; }
+  .prize-wheel-legend small { width:100%; padding-left:20px; }
+  .inventory-day-controls > .btn { width:100%; }
+}
+@media (min-width:1100px) and (min-aspect-ratio:4/3) {
+  .tvrail { gap:.6cqw; overflow-y:auto; }
+  .tvrail > h1 { flex-shrink:0; font-size:2.6cqw; }
+  .tvrail > .tvcard { flex-shrink:0; padding:.8cqw; }
+  .tvrail > .tvcard.grow { min-height:6.5cqw; }
+  .tvrail .bigstat { font-size:3cqw; }
+  .tvrail .tv-prizes { padding:.6cqw; gap:.35cqw; }
+  .tv-merch-stock { grid-template-columns:repeat(2,minmax(0,1fr)); gap:.35cqw .6cqw; }
+  .tv-merch-stock li { gap:.35cqw; font-size:.9cqw; align-items:flex-start; }
+  .tvrail .tvlock { position:sticky; bottom:0; background:#112158; }
+  .tvgame .merch-fact b { font-size:1.5cqw; }
+}
+@media (min-width:1100px) and (min-aspect-ratio:4/3) {
+  .tvrail { gap:.5cqw; }
+  .tvrail .tvqr { padding:.5cqw; }
+  .tvrail .tvqr canvas { width:30% !important; }
+  .tvrail .bigstat { font-size:2.8cqw; }
+}

@@ -5,6 +5,7 @@ import { makePool } from '../src/server/db';
 import { GameService } from '../src/server/service';
 import { loadSeed } from '../src/server/content';
 import { seedEvent } from '../src/server/seed';
+import { exportCsv } from '../src/server/csv';
 
 const url=process.env.TEST_DATABASE_URL||'postgresql://outguess:outguess@127.0.0.1:5434/outguess';
 const schema=`test_${randomUUID().replaceAll('-','')}`;
@@ -13,7 +14,7 @@ const pool=makePool(url,`-c search_path=${schema}`);
 const START=Date.parse('2026-11-11T10:30:00+08:00');
 let now=START;
 let serial=0;
-const service=new GameService(pool,{eventId:'test-event',demo:true,publicUrl:'https://booth.test',secret:'integration-test-secret-is-32-chars',staffPin:'4321'},()=>now);
+const service=new GameService(pool,{eventId:'test-event',demo:true,publicUrl:'https://booth.test',secret:'integration-test-secret-is-32-chars',staffPin:'4321'},()=>now,max=>max===100?99:0);
 const signup=(mobile=`0917${String(++serial).padStart(7,'0')}`)=>({name:'Test Player',mobile,email:'test@example.com',company:'Co',role:'CMO',industry:'Agency',challenge:'Proving ROI',planning:'Yes',consent:true,optin:false,source:'phone'});
 async function register(input=signup(),key=randomUUID()) {
   const c=await service.content();
@@ -85,10 +86,10 @@ test('25 concurrent players complete with unique claim codes and finishes do not
 test('prize fulfillment: concurrent requests for the last item deduct only once',async()=>{
   const staff=await service.login('4321','prize-staff');
   const inventory=await service.inventory();
-  await service.updateInventory(staff,{revision:inventory.revision,totals:Object.fromEntries(inventory.items.map(p=>[p.id,p.id==='ballpen'?1:0]))});
+  await service.updateInventory(staff,{day:1,revision:inventory.revision,totals:Object.fromEntries(inventory.items.map(p=>[p.id,p.id==='pouch'?1:0]))});
   const games=await Promise.all([register(),register()]);
   const finished=await Promise.all(games.map(p=>play(p.token)));
-  const results=await Promise.allSettled(finished.map(p=>service.claim(staff,p.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true})));
+  const results=await Promise.allSettled(finished.map(p=>service.claim(staff,p.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1})));
   expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
   const rejected=results.find(r=>r.status==='rejected');
   expect(rejected?.status==='rejected'&&rejected.reason.code).toBe('out_of_stock');
@@ -97,36 +98,37 @@ test('prize fulfillment: concurrent requests for the last item deduct only once'
 });
 test('prize fulfillment: stock edits, restocking and seeding preserve saved totals',async()=>{
   const staff=await service.login('4321','inventory-staff');const initial=await service.inventory();
-  const totals=Object.fromEntries(initial.items.map(p=>[p.id,p.id==='gcash_150'?100:0]));
-  const stocked=await service.updateInventory(staff,{revision:initial.revision,totals});
-  expect(stocked.cashRemainingPhp).toBe(15000);
-  await expect(service.updateInventory(staff,{revision:initial.revision,totals})).rejects.toMatchObject({code:'inventory_changed'});
-  await expect(service.updateInventory(staff,{revision:stocked.revision,totals:{...totals,ballpen:-1}})).rejects.toMatchObject({code:'invalid_inventory'});
-  await expect(service.updateInventory(staff,{revision:stocked.revision,totals:{...totals,ballpen:.5}})).rejects.toMatchObject({code:'invalid_inventory'});
+  const totals=Object.fromEntries(initial.items.map(p=>[p.id,p.id==='gcash_100'?100:0]));
+  const stocked=await service.updateInventory(staff,{day:1,revision:initial.revision,totals});
+  expect(stocked.cashRemainingPhp).toBe(10000);
+  await expect(service.updateInventory(staff,{day:1,revision:initial.revision,totals})).rejects.toMatchObject({code:'inventory_changed'});
+  await expect(service.updateInventory(staff,{day:1,revision:stocked.revision,totals:{...totals,pouch:-1}})).rejects.toMatchObject({code:'invalid_inventory'});
+  await expect(service.updateInventory(staff,{day:1,revision:stocked.revision,totals:{...totals,pouch:.5}})).rejects.toMatchObject({code:'invalid_inventory'});
   const player=await register();const finished=await play(player.token);
-  const result=await service.claim(staff,finished.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true});
-  expect(result.prize?.id).toBe('gcash_150');expect(result.wheel?.items).toHaveLength(1);
-  const drawn=await service.inventory();expect(drawn.cashRemainingPhp).toBe(14850);
-  await expect(service.updateInventory(staff,{revision:drawn.revision,totals:{...totals,gcash_150:0}})).rejects.toMatchObject({code:'below_fulfilled'});
+  const result=await service.claim(staff,finished.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
+  expect(result.prize?.id).toBe('gcash_100');expect(result.wheel?.items).toHaveLength(2);
+  const drawn=await service.inventory();expect(drawn.cashRemainingPhp).toBe(9900);
+  await expect(service.updateInventory(staff,{day:1,revision:drawn.revision,totals:{...totals,gcash_100:0}})).rejects.toMatchObject({code:'below_fulfilled'});
   await seedEvent(pool,'test-event',true,await loadSeed(true));expect(await service.inventory()).toEqual(drawn);
   now+=86400_000;expect(await service.inventory()).toEqual(drawn);
   const nextDayStaff=await service.login('4321','inventory-staff');
-  const restocked=await service.updateInventory(nextDayStaff,{revision:drawn.revision,totals:{...totals,gcash_150:101}});
-  expect(restocked.items.find(p=>p.id==='gcash_150')?.remaining).toBe(100);
+  const restocked=await service.updateInventory(nextDayStaff,{day:1,revision:drawn.revision,totals:{...totals,gcash_100:101}});
+  expect(restocked.items.find(p=>p.id==='gcash_100')?.remaining).toBe(100);
 });
 test('prize fulfillment: historical claims are not redrawn or charged to new stock',async()=>{
   const player=await register();const finished=await play(player.token);const code=finished.reward!.code!;
   await pool.query('UPDATE claims SET claimed_at=$1 WHERE code=$2',[now,code]);
   const staff=await service.login('4321','historical-staff');
-  const result=await service.claim(staff,code,{confirmedNumber:true,fulfillmentConfirmed:true});
+  const result=await service.claim(staff,code,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
   expect(result).toMatchObject({claimed:true,legacy:true,prize:null,replayed:true,wheel:null});
   expect((await service.inventory()).fulfilled).toBe(0);
 });
-test('prize fulfillment: TV signup requires five fields and consent; phone retains qualifiers',async()=>{
+test('prize fulfillment: both signup profiles require five fields and consent',async()=>{
   const minimal={...signup(),source:'tv',industry:'',challenge:'',planning:''};
   const tv=await register(minimal);
   expect((await pool.query('SELECT industry,challenge,planning,marketing_optin FROM players WHERE id=$1',[tv.me.id])).rows[0]).toEqual({industry:null,challenge:null,planning:null,marketing_optin:false});
-  await expect(register({...minimal,mobile:signup().mobile,source:'phone'})).rejects.toMatchObject({code:'invalid'});
+  const phone=await register({...minimal,mobile:signup().mobile,source:'phone'});
+  expect(phone.me.profile.complete).toBe(false);
   const content=await service.content();
   await expect(service.signup({...minimal,mobile:signup().mobile,consent:false,contentVersion:content.version,consentVersion:content.consentVersion},randomUUID())).rejects.toMatchObject({code:'invalid'});
 });
@@ -134,19 +136,19 @@ test('prize fulfillment: staff auth across instances and duplicate fulfillment a
   const {token}=await register();const me=await play(token);const code=me.reward?.code??'';
   await expect(service.lookup('',code)).rejects.toMatchObject({status:401});
   const staff=await service.login('4321','staff-ip');
-  const stock=await service.inventory();await service.updateInventory(staff,{revision:stock.revision,totals:Object.fromEntries(stock.items.map(p=>[p.id,p.id==='ballpen'?1:0]))});
-  const second=new GameService(pool,service.options,()=>now);
+  const stock=await service.inventory();await service.updateInventory(staff,{day:1,revision:stock.revision,totals:Object.fromEntries(stock.items.map(p=>[p.id,p.id==='pouch'?1:0]))});
+  const second=new GameService(pool,service.options,()=>now,max=>max===100?99:0);
   expect((await second.lookup(staff,code.toLowerCase())).mobile).toMatch(/^09\d{9}$/);
   await expect(second.claim(staff,code,{confirmedNumber:true})).rejects.toMatchObject({status:400});
-  const claims=await Promise.all(Array.from({length:8},()=>second.claim(staff,code,{confirmedNumber:true,fulfillmentConfirmed:true})));
-  expect(claims.every(c=>c.claimed&&c.prize?.id==='ballpen')).toBe(true);
+  const claims=await Promise.all(Array.from({length:8},()=>second.claim(staff,code,{confirmedNumber:true,fulfillmentConfirmed:true,day:1})));
+  expect(claims.every(c=>c.claimed&&c.prize?.id==='pouch')).toBe(true);
   expect(claims.filter(c=>!c.replayed)).toHaveLength(1);expect((await service.inventory()).fulfilled).toBe(1);
   expect((await service.summary(staff)).kpis.claimedToday).toBe(1);
   await service.logout(staff);await expect(second.staff(staff)).rejects.toMatchObject({status:401});
 });
 test('PIN lockout is shared between instances and expires',async()=>{
   for(let i=0;i<5;i++)await expect(service.login('0000','ip')).rejects.toMatchObject({status:401});
-  const second=new GameService(pool,service.options,()=>now);
+  const second=new GameService(pool,service.options,()=>now,max=>max===100?99:0);
   await expect(second.login('4321','ip')).rejects.toMatchObject({status:429});
   now+=15*60_000;
   expect(await second.login('4321','ip')).toBeTruthy();
@@ -160,4 +162,115 @@ test('published content changes cannot alter an existing player’s reveals',asy
   await service.audience(token,'genz');await service.start(token,0);
   expect((await service.lock(token,0,{pick:'b',conf:2,clientMs:5000})).winner).toBe('b');
   expect((await service.current(token)).content.version).toBe(c.id);
+});
+
+
+test.each(['phone','tv'])('campaign questions: %s saves results before answers and issues one retry-safe code',async source=>{
+  const player=await register({...signup(),source,industry:'',challenge:'',planning:''});
+  const answers={industry:'Agency',challenge:'Proving ROI',planning:'Yes'};
+  await expect(service.profile(player.token,answers)).rejects.toMatchObject({code:'rounds_incomplete'});
+  const finished=await play(player.token);
+  expect(finished.finished).toBe(true);expect(finished.score).toBeGreaterThan(0);
+  expect(finished.reward?.code).toBeNull();expect(finished.profile.complete).toBe(false);
+  await expect(service.retryAward(player.token)).rejects.toMatchObject({code:'profile_required'});
+  await expect(service.profile(player.token,{...answers,industry:'invalid',planning:''})).rejects.toMatchObject({code:'invalid',details:{errors:{industry:'Choose an industry.',planning:'Pick one.'}}});
+  expect((await service.current(player.token)).reward?.code).toBeNull();
+  const saved=await Promise.all(Array.from({length:3},()=>service.profile(player.token,answers)));
+  expect(saved[0].profile).toEqual({...answers,complete:true});
+  expect(saved[0].reward?.code).toBeTruthy();
+  expect(new Set(saved.map(p=>p.reward!.code)).size).toBe(1);
+  expect((await service.current(player.token)).reward?.code).toBe(saved[0].reward?.code);
+  expect((await service.retryAward(player.token)).reward?.code).toBe(saved[0].reward?.code);
+  expect((await service.finish(player.token)).score).toBe(finished.score);
+  expect((await service.inventory()).fulfilled).toBe(0);
+  const staff=await service.login('4321','campaign-staff');
+  expect((await service.summary(staff)).leads).toContainEqual(expect.objectContaining({name:'Test Player',challenge:'Proving ROI',planning:'Yes'}));
+  expect(await service.exportRows(staff)).toContainEqual(expect.objectContaining(answers));
+});
+
+test('campaign questions: previously issued codes survive missing campaign answers and fulfillment',async()=>{
+  const player=await register();const finished=await play(player.token);const code=finished.reward!.code!;
+  await pool.query('UPDATE players SET industry=NULL,challenge=NULL,planning=NULL WHERE id=$1',[player.me.id]);
+  expect((await service.current(player.token)).profile.complete).toBe(false);
+  expect((await service.retryAward(player.token)).reward?.code).toBe(code);
+  const staff=await service.login('4321','old-code-staff');
+  const inventory=await service.inventory();
+  await service.updateInventory(staff,{day:1,revision:inventory.revision,totals:Object.fromEntries(inventory.items.map(p=>[p.id,p.id==='pouch'?1:0]))});
+  await service.claim(staff,code,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
+  expect((await service.current(player.token)).reward).toMatchObject({code,claimed:true,prize:{id:'pouch'}});
+});
+
+
+test('daily prizes: allocations, day switches and inactive-day edits remain separate',async()=>{
+  const initial=await service.inventory();
+  expect(initial.activeDay).toBe(1);expect(initial.packagePoolValuePhp).toBe(750000);
+  expect(initial.days.map(day=>[day.total,day.remaining,day.cashRemainingPhp])).toEqual([[155,155,15500],[155,155,15500]]);
+  const staff=await service.login('4321','daily-stock');
+  const player=await register();const finished=await play(player.token);
+  const drawn=await service.claim(staff,finished.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
+  expect(drawn).toMatchObject({outcome:'prize',prizeDay:1,prize:{id:'tote_bag_rope'}});
+  const beforeSwitch=await service.inventory();
+  const day2=await service.switchPrizeDay(staff,{day:2,revision:beforeSwitch.revision});
+  expect(day2.remaining).toBe(155);expect(day2.days[0].remaining).toBe(154);
+  await expect(service.switchPrizeDay(staff,{day:1,revision:beforeSwitch.revision})).rejects.toMatchObject({code:'inventory_changed'});
+  const pending=await register();const game=await play(pending.token);
+  await expect(service.claim(staff,game.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1})).rejects.toMatchObject({code:'inventory_changed'});
+  expect((await service.lookup(staff,game.reward!.code!)).claimed).toBe(false);
+  const totals=Object.fromEntries(day2.days[0].items.map(p=>[p.id,p.total+(p.id==='pouch'?1:0)]));
+  const edited=await service.updateInventory(staff,{day:1,revision:day2.revision,totals});
+  expect(edited.remaining).toBe(155);expect(edited.days[0].items.find(p=>p.id==='pouch')?.total).toBe(26);
+  await seedEvent(pool,'test-event',true,await loadSeed(true));expect(await service.inventory()).toEqual(edited);
+  now+=86400_000;expect(await service.inventory()).toEqual(edited);
+});
+
+test('daily prizes: the 15 percent boundary closes no-prize draws without consuming stock',async()=>{
+  const missService=new GameService(pool,service.options,()=>now,()=>14);
+  const winService=new GameService(pool,service.options,()=>now,max=>max===100?15:0);
+  const staff=await service.login('4321','no-prize');
+  const player=await register();const finished=await play(player.token);
+  const initial=await service.inventory();
+  const result=await missService.claim(staff,finished.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
+  expect(result).toMatchObject({claimed:true,outcome:'no_prize',legacy:false,prize:null,prizeDay:1});
+  expect(result.wheel?.prizeId).toBe('no_prize');
+  expect(result.wheel?.items[0]).toMatchObject({id:'no_prize',probability:.15,remaining:null});
+  expect(result.wheel!.items.reduce((n,p)=>n+p.probability,0)).toBeCloseTo(1);
+  const current=await service.inventory();expect(current.days).toEqual(initial.days);
+  const repeats=await Promise.all(Array.from({length:4},()=>winService.claim(staff,result.code,{confirmedNumber:true,fulfillmentConfirmed:true,day:2})));
+  expect(repeats.every(r=>r.outcome==='no_prize'&&r.replayed)).toBe(true);
+  expect((await service.current(player.token)).reward).toMatchObject({outcome:'no_prize',claimed:true,legacy:false});
+  const summary=await service.summary(staff);expect(summary.kpis.claimedToday).toBe(0);expect(summary.kpis.noPrizeDraws).toBe(1);expect(summary.pending).toHaveLength(0);
+  expect(summary.leads[0].claimed).toBe(false);
+  const rows=await service.exportRows(staff);expect(rows[0]).toMatchObject({draw_outcome:'no_prize',prize_id:null});
+  expect(exportCsv(rows,true)).toContain('"Thank you for playing"');
+  const next=await register();const game=await play(next.token);
+  const won=await winService.claim(staff,game.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
+  expect(won.outcome).toBe('prize');expect((await service.inventory()).remaining).toBe(154);
+});
+
+test('daily prizes: package value is separate from cash, and depleted stock blocks spins',async()=>{
+  const staff=await service.login('4321','package-staff');const inventory=await service.inventory();
+  const totals=Object.fromEntries(inventory.items.map(p=>[p.id,p.id==='predikta_package'?1:0]));
+  await service.updateInventory(staff,{day:1,revision:inventory.revision,totals});
+  const player=await register();const finished=await play(player.token);
+  const result=await service.claim(staff,finished.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
+  expect(result.prize).toMatchObject({id:'predikta_package',amountPhp:null,valuePhp:75000});
+  expect((await service.inventory()).cashRemainingPhp).toBe(0);
+  const wheel=result.wheel!;expect(wheel.items.map(p=>p.probability)).toEqual([.15,.85]);
+  const next=await register();const game=await play(next.token);
+  const missService=new GameService(pool,service.options,()=>now,()=>0);
+  await expect(missService.claim(staff,game.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1})).rejects.toMatchObject({code:'out_of_stock'});
+  expect((await service.lookup(staff,game.reward!.code!)).claimed).toBe(false);
+  expect((await service.inventory()).days[1].remaining).toBe(155);
+});
+
+test('daily prizes: concurrent day switch and draw cannot consume the wrong day',async()=>{
+  const staff=await service.login('4321','day-race');const player=await register();const game=await play(player.token);
+  const initial=await service.inventory();
+  const results=await Promise.allSettled([
+    service.switchPrizeDay(staff,{day:2,revision:initial.revision}),
+    service.claim(staff,game.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1}),
+  ]);
+  expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+  const rejected=results.find(r=>r.status==='rejected');expect(rejected?.status==='rejected'&&rejected.reason.code).toBe('inventory_changed');
+  const inventory=await service.inventory();expect(inventory.days[1].fulfilled).toBe(0);
 });

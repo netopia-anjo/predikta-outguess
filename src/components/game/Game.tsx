@@ -4,17 +4,17 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Board, ConfIdx, ContentPayload, Me, PrizeInventory, Reveal, Side } from '../../shared/types';
 import { CONF, PERSONAS, ROUND_SECS } from '../../shared/rules';
-import { CHALLENGES, PLANNING, SIGNUP_LIMITS, normalizeMobile, validateSignup, type SignupErrors, type SignupInput } from '../../shared/validation';
+import { CHALLENGES, PLANNING, SIGNUP_LIMITS, normalizeMobile, validateCampaign, validateSignup, type CampaignInput, type SignupErrors, type SignupInput } from '../../shared/validation';
 import { api, ApiError } from '../../lib/api';
 import { fmt } from '../../lib/hooks';
 import { AdCard, Brand, Dots, Qr, SplitBar, Wallet } from './bits';
 import { MobileInput } from './MobileInput';
 import { IndustrySelect } from './IndustrySelect';
 import { PhoneLanding } from './PhoneLanding';
-import { PRIZE_POOL_VALUE_PHP } from '@/shared/prizes';
+import { NO_PRIZE_LABEL } from '@/shared/prizes';
 
 export type Variant = 'phone' | 'tv';
-type Screen = 'landing' | 'signup' | 'howto' | 'audience' | 'round' | 'reveal' | 'results' | 'claim';
+type Screen = 'landing' | 'signup' | 'howto' | 'audience' | 'round' | 'reveal' | 'results' | 'profile' | 'claim';
 
 interface State {
   screen: Screen;
@@ -195,6 +195,37 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
     }
   }
 
+  function beginClaim() {
+    if (ref.current.busy) return;
+    const me = ref.current.me;
+    if (!me?.finished) return;
+    if (me.reward?.code || me.profile.complete) return go('claim');
+    patch({ form: { ...ref.current.form, ...me.profile }, errors: {} });
+    go('profile');
+  }
+
+  async function submitProfile(form: CampaignInput) {
+    if (ref.current.busy) return;
+    const { value, errors } = validateCampaign({ ...form });
+    patch({ form: { ...ref.current.form, ...value }, errors });
+    if (Object.keys(errors).length) {
+      focusSignupError(errors);
+      return;
+    }
+    patch({ busy: true });
+    try {
+      const me = await call<Me>('/api/game/profile', value);
+      patch({ me });
+      go('claim');
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 400) {
+        const errors = (e.data.errors ?? {}) as SignupErrors;
+        patch({ busy: false, errors });
+        focusSignupError(errors);
+      } else fail(e, 'Could not save your answers. Your score is saved. Tap Retry.', () => submitProfile(value));
+    }
+  }
+
   async function chooseAudience(audienceId: string) {
     patch({ busy: true });
     try {
@@ -278,7 +309,11 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
       const me = retryAward ? await call<Me>('/api/game/claim/retry', {}, 1) : await call<Me>('/api/me', undefined, 0);
       patch({ me });
     } catch (e) {
-      fail(e, 'Could not check your claim. Tap Retry.', () => refreshMe(retryAward));
+      if (e instanceof ApiError && e.code === 'profile_required') {
+        patch({ busy: false });
+        beginClaim();
+      }
+      else fail(e, 'Could not check your claim. Tap Retry.', () => refreshMe(retryAward));
     } finally {
       refreshInFlight.current = false;
       if (retryAward && epoch === generation.current) patch({ busy: false });
@@ -291,7 +326,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
       const me = await call<Me>('/api/me');
       patch({ me, wallet: me.wallet });
       onPlayer?.(me.id);
-      if (me.finished) return go('claim');
+      if (me.finished) return go(me.reward?.code || me.profile.complete ? 'claim' : 'results');
       if (me.startedRound) return startRound(me.startedRound.idx);
       if (me.rounds.length === 3) return finish();
       if (me.rounds.length > 0) return sendLock(me.rounds.length - 1, {}); // already locked: returns the stored reveal
@@ -405,12 +440,12 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
         <div className="facts">
           <div className="fact"><b>3</b><span>rounds</span></div>
           <div className="fact"><b>3</b><span>minutes</span></div>
-          <div className="fact merch-fact"><b>Win</b><span>AdSpark Merch</span></div>
+          <div className="fact merch-fact"><b>Get a chance</b><span>to win a prize</span></div>
         </div>
         <div className="gcleft prize-value-banner">
-          <span><b>PHP {fmt(PRIZE_POOL_VALUE_PHP)}</b> Worth of Prizes to be given away</span>
+          <span><b>PHP {prizes ? fmt(prizes.packagePoolValuePhp) : '–'}</b> worth of Digicon × Predikta Packages across both days</span>
         </div>
-        <p className="small muted" style={{margin:0}}>Finish all 3 rounds to qualify, while supplies last.{prizes?.remaining === 0 && ' Prizes currently unavailable.'}</p>
+        <p className="small muted" style={{margin:0}}>Finish all 3 rounds to get a chance to win a prize. Day {prizes?.activeDay??'–'} prizes, while supplies last. A 15% chance of no prize applies.{prizes?.remaining === 0 && ' Prizes currently unavailable.'}</p>
         <div className="spacer" />
         <button className="btn spark" disabled={s.busy || !!s.token} onClick={() => go('signup')}>
           {s.token ? 'Resuming your game…' : variant === 'tv' ? 'Tap to play here' : 'Start playing'}
@@ -447,7 +482,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
       const g = (k: string) => String(fd.get(k) ?? '').trim();
       submitSignup({
         name: g('name'), mobile: normalizeMobile(g('mobile')), email: g('email'), company: g('company'), role: g('role'),
-        industry: g('industry'), challenge: g('challenge'), planning: g('planning'), consent: fd.get('consent') === 'on', optin: fd.get('optin') === 'on',
+        industry: f.industry ?? '', challenge: f.challenge ?? '', planning: f.planning ?? '', consent: fd.get('consent') === 'on', optin: fd.get('optin') === 'on',
       });
     };
     return (
@@ -470,37 +505,6 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
             <label className="f">Company<input name="company" {...fieldAttrs('company')} maxLength={SIGNUP_LIMITS.company} autoComplete="organization" defaultValue={f.company} />{e.company && <span className="err" id="signup-company-error">{e.company}</span>}</label>
             <label className="f">Role<input name="role" {...fieldAttrs('role')} maxLength={SIGNUP_LIMITS.role} autoComplete="organization-title" defaultValue={f.role} />{e.role && <span className="err" id="signup-role-error">{e.role}</span>}</label>
           </div>
-          {variant === 'phone' && <>
-          <div className="f industry-field">
-            <label htmlFor="signup-industry">Industry</label>
-            <IndustrySelect {...fieldAttrs('industry')} defaultValue={f.industry ?? ''} onChange={() => {
-              if (ref.current.errors.industry) {
-                const errors = { ...ref.current.errors };
-                delete errors.industry;
-                patch({ errors });
-              }
-            }} />
-            {e.industry && <span className="err" id="signup-industry-error">{e.industry}</span>}
-          </div>
-          <fieldset disabled={s.busy}>
-            <legend>Biggest campaign challenge?</legend>
-            {CHALLENGES.map((c) => (
-              <label className="opt" key={c}><input type="radio" name="challenge" required disabled={s.busy} aria-invalid={!!e.challenge} aria-describedby={e.challenge ? 'signup-challenge-error' : undefined} value={c} defaultChecked={f.challenge === c} /><span>{c}</span></label>
-            ))}
-            {e.challenge && <span className="err" id="signup-challenge-error">{e.challenge}</span>}
-          </fieldset>
-          <fieldset disabled={s.busy}>
-            <legend>Planning a campaign in the next 6 months?</legend>
-            <div>
-              {PLANNING.map((c) => (
-                <label className="opt" key={c} style={{ display: 'inline-flex', marginRight: '14px' }}>
-                  <input type="radio" name="planning" required disabled={s.busy} aria-invalid={!!e.planning} aria-describedby={e.planning ? 'signup-planning-error' : undefined} value={c} defaultChecked={f.planning === c} /><span>{c}</span>
-                </label>
-              ))}
-            </div>
-            {e.planning && <span className="err" id="signup-planning-error">{e.planning}</span>}
-          </fieldset>
-          </>}
           <label className="opt">
             <input type="checkbox" name="consent" {...fieldAttrs('consent')} defaultChecked={f.consent} />
             <span>{content.consentText} <b>(Required)</b>{content.privacyPolicyUrl && <> <a className="linkish" href={content.privacyPolicyUrl} target="_blank" rel="noopener noreferrer">Privacy policy</a></>}</span>
@@ -517,6 +521,69 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
         </form>
       </>
     );
+  }
+
+  function Profile() {
+    const f = s.form;
+    const e = s.errors;
+    const fieldAttrs = (field: keyof CampaignInput) => ({
+      id: `profile-${field}`, required: true, disabled: s.busy,
+      'aria-invalid': !!e[field], 'aria-describedby': e[field] ? `profile-${field}-error` : undefined,
+    });
+    const clearFieldError = (ev: React.SyntheticEvent<HTMLFormElement>) => {
+      if (!(ev.target instanceof HTMLInputElement)) return;
+      const field = ev.target.name as keyof CampaignInput;
+      if (ref.current.errors[field]) {
+        const errors = { ...ref.current.errors };
+        delete errors[field];
+        patch({ errors });
+      }
+    };
+    return <>
+      <div>
+        <span className="eyebrow">One last step</span>
+        <h2 style={{ fontSize: '26px', marginTop: '4px' }}>Tell us about your campaigns</h2>
+        <p className="small muted">Your score is saved. Answer these three questions to get your draw QR.</p>
+      </div>
+      {Object.values(e).some(Boolean) && <div className="errbox" role="alert">Please answer the highlighted questions to continue.</div>}
+      <form noValidate aria-busy={s.busy} onChange={clearFieldError} onSubmit={ev => {
+        ev.preventDefault();
+        const fd = new FormData(ev.currentTarget);
+        const g = (k: string) => String(fd.get(k) ?? '').trim();
+        submitProfile({ industry: g('industry'), challenge: g('challenge'), planning: g('planning') });
+      }}>
+          <div className="f industry-field">
+            <label htmlFor="profile-industry">Industry</label>
+            <IndustrySelect {...fieldAttrs('industry')} defaultValue={f.industry ?? ''} onChange={() => {
+              if (ref.current.errors.industry) {
+                const errors = { ...ref.current.errors };
+                delete errors.industry;
+                patch({ errors });
+              }
+            }} />
+            {e.industry && <span className="err" id="profile-industry-error">{e.industry}</span>}
+          </div>
+          <fieldset disabled={s.busy}>
+            <legend>Biggest campaign challenge?</legend>
+            {CHALLENGES.map((c) => (
+              <label className="opt" key={c}><input type="radio" name="challenge" required disabled={s.busy} aria-invalid={!!e.challenge} aria-describedby={e.challenge ? 'profile-challenge-error' : undefined} value={c} defaultChecked={f.challenge === c} /><span>{c}</span></label>
+            ))}
+            {e.challenge && <span className="err" id="profile-challenge-error">{e.challenge}</span>}
+          </fieldset>
+          <fieldset disabled={s.busy}>
+            <legend>Planning a campaign in the next 6 months?</legend>
+            <div>
+              {PLANNING.map((c) => (
+                <label className="opt" key={c} style={{ display: 'inline-flex', marginRight: '14px' }}>
+                  <input type="radio" name="planning" required disabled={s.busy} aria-invalid={!!e.planning} aria-describedby={e.planning ? 'profile-planning-error' : undefined} value={c} defaultChecked={f.planning === c} /><span>{c}</span>
+                </label>
+              ))}
+            </div>
+            {e.planning && <span className="err" id="profile-planning-error">{e.planning}</span>}
+          </fieldset>
+        <button className="btn spark" type="submit" disabled={s.busy}>{s.busy ? 'Saving…' : 'Get my draw QR'}</button>
+      </form>
+    </>;
   }
 
   function HowTo() {
@@ -683,8 +750,8 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
             <span>Run a real Predikta simulation on my next campaign</span>
           </button>
         </div>
-        <button className="btn spark" onClick={() => go('claim')}>
-          Claim my prize
+        <button className="btn spark" disabled={s.busy} onClick={beginClaim}>
+          Get a chance to win a prize
         </button>
       </>
     );
@@ -696,19 +763,21 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
     return <>
       <div className="claim">
         <span className="eyebrow">Show this to booth staff</span>
-        <h2 style={{ fontSize: '24px' }}>{reward.claimed ? 'Your prize' : 'Claim your prize'}</h2>
+        <h2 style={{ fontSize: '24px' }}>{reward.outcome==='no_prize'?NO_PRIZE_LABEL:reward.claimed?'Your prize':'Your prize draw'}</h2>
         {reward.code ? <>
-          <Qr text={reward.code} label={`Claim QR code for ${reward.code}`} />
+          {reward.outcome!=='no_prize'&&<Qr text={reward.code} label={`Prize draw QR code for ${reward.code}`} />}
           <span className="code">{reward.code}</span>
-        </> : <button className="btn" disabled={s.busy} onClick={() => refreshMe(true)}>Get claim code</button>}
+        </> : <button className="btn" disabled={s.busy} onClick={() => refreshMe(true)}>Get draw code</button>}
         <span className="small muted">Business number: {reward.mobileMasked}</span>
         {reward.prize && <h3 className="prize-winner">{reward.prize.name}</h3>}
         {reward.claimed ? <>
-          <span className="status done"><i />Fulfillment recorded</span>
+          <span className="status done"><i />{reward.outcome==='no_prize'?'Draw complete — no prize':'Fulfillment recorded'}</span>
+          {reward.outcome==='no_prize'&&<p className="small muted">No prize this time. Thanks for taking the challenge! Your score is saved.</p>}
+          {reward.prize?.valuePhp&&<p className="small muted">Worth PHP {fmt(reward.prize.valuePhp)}. Ask booth staff about package redemption.</p>}
           {reward.legacy && <span className="small muted">Previously fulfilled · historical record</span>}
         </> : <>
           <span className="status wait"><i />Waiting for staff</span>
-          <p className="small muted" style={{margin:0}}>Staff will draw your prize. Available while supplies last.</p>
+          <p className="small muted" style={{margin:0}}>Show your QR to staff for a chance to win a prize. A 15% no-prize chance applies. Available while daily supplies last.</p>
           {prizes?.remaining === 0 && <p className="small muted" style={{margin:0}}>Prizes are currently out of stock. Your score and claim code are saved.</p>}
         </>}
         <p className="small">Want to know more? <a className="linkish" href={content.contactUrl} target="_blank" rel="noopener noreferrer">Click here</a></p>
@@ -720,7 +789,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
 
   const SCREENS: Record<Screen, () => React.JSX.Element | null> = {
     landing: Landing, signup: Signup, howto: HowTo, audience: AudienceScreen,
-    round: RoundScreen, reveal: RevealScreen, results: Results, claim: Claim,
+    round: RoundScreen, reveal: RevealScreen, results: Results, profile: Profile, claim: Claim,
   };
   const Body = SCREENS[s.screen];
   const modalRound = s.modal && round;

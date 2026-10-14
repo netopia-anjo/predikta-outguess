@@ -7,15 +7,19 @@ export const CHALLENGES = [
 ] as const;
 export const PLANNING = ['Yes', 'Maybe', 'No'] as const;
 
-export interface SignupInput {
+export interface CampaignInput {
+  industry: string;
+  challenge: string;
+  planning: string;
+}
+export type CampaignErrors = Partial<Record<keyof CampaignInput, string>>;
+
+export interface SignupInput extends CampaignInput {
   name: string;
   mobile: string;
   email: string;
   company: string;
   role: string;
-  industry: string;
-  challenge: string;
-  planning: string;
   consent: boolean;
   optin: boolean;
 }
@@ -40,6 +44,14 @@ export const normalizeMobile = (s: unknown) => {
 };
 
 const text = (v: unknown) => typeof v === 'string' ? v.trim() : '';
+export function validateCampaign(raw: Record<string, unknown>): { value: CampaignInput; errors: CampaignErrors } {
+  const value = { industry: text(raw.industry), challenge: text(raw.challenge), planning: text(raw.planning) };
+  const errors: CampaignErrors = {};
+  if (!(INDUSTRIES as readonly string[]).includes(value.industry)) errors.industry = 'Choose an industry.';
+  if (!(CHALLENGES as readonly string[]).includes(value.challenge)) errors.challenge = 'Pick one.';
+  if (!(PLANNING as readonly string[]).includes(value.planning)) errors.planning = 'Pick one.';
+  return { value, errors };
+}
 const controls = /\p{Cc}/u;
 const validEmail = (email: string) => {
   const local = email.split('@')[0];
@@ -54,9 +66,9 @@ export function validateSignup(raw: Record<string, unknown>, source: 'phone' | '
     email: text(raw.email).toLowerCase(),
     company: text(raw.company),
     role: text(raw.role),
-    industry: source === 'tv' ? '' : text(raw.industry),
-    challenge: source === 'tv' ? '' : text(raw.challenge),
-    planning: source === 'tv' ? '' : text(raw.planning),
+    industry: text(raw.industry),
+    challenge: text(raw.challenge),
+    planning: text(raw.planning),
     consent: raw.consent === true,
     optin: source === 'phone' && raw.optin === true,
   };
@@ -70,10 +82,11 @@ export function validateSignup(raw: Record<string, unknown>, source: 'phone' | '
   for (const field of ['name','email','company','role'] as const) {
     if (value[field].length > SIGNUP_LIMITS[field]) e[field] = `Use ${SIGNUP_LIMITS[field]} characters or fewer.`;
   }
-  if (source === 'phone') {
-    if (!(INDUSTRIES as readonly string[]).includes(value.industry)) e.industry = 'Choose an industry.';
-    if (!(CHALLENGES as readonly string[]).includes(value.challenge)) e.challenge = 'Pick one.';
-    if (!(PLANNING as readonly string[]).includes(value.planning)) e.planning = 'Pick one.';
+  // Older clients can still supply valid campaign answers at signup.
+  // New clients leave them empty and collect them after gameplay.
+  const campaignErrors = validateCampaign(raw).errors;
+  for (const field of ['industry', 'challenge', 'planning'] as const) {
+    if (raw[field] !== undefined && raw[field] !== '' && campaignErrors[field]) e[field] = campaignErrors[field];
   }
   if (!value.consent) e.consent = 'Consent is required to play.';
   if (raw.optin !== undefined && typeof raw.optin !== 'boolean') e.optin = 'Choose whether to receive marketing updates.';

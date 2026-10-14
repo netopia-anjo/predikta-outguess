@@ -53,6 +53,7 @@ async function handle(req: NextRequest) {
       data = parts[5] === 'start' ? await service.start(player,Number(parts[4])) : await service.lock(player,Number(parts[4]),body);
     } else if (method === 'POST' && path === '/api/game/finish') data = await service.finish(player);
     else if (method === 'POST' && path === '/api/game/claim/retry') data = await service.retryAward(player);
+    else if (method === 'POST' && path === '/api/game/profile') data = await service.profile(player,body);
     else if (method === 'POST' && path === '/api/game/sim') data = await service.interest(player,body.wants);
     else if (method === 'POST' && ['/api/staff/login','/api/tv/login'].includes(path)) {
       const kind = path.startsWith('/api/tv/') ? 'tv' : 'staff';
@@ -80,6 +81,7 @@ async function handle(req: NextRequest) {
       catch (e) { if (e instanceof HttpError && e.status === 401) data = {ok:false}; else throw e; }
     } else if (method === 'GET' && path === '/api/staff/summary') data = await service.summary(staff);
     else if (method === 'GET' && path === '/api/staff/inventory') data = await service.staffInventory(staff);
+    else if (method === 'POST' && path === '/api/staff/inventory/day') data = await service.switchPrizeDay(staff,body);
     else if (method === 'POST' && path === '/api/staff/inventory') data = await service.updateInventory(staff,body);
     else if (method === 'GET' && ['/api/staff/export.csv','/api/staff/claims.csv'].includes(path)) {
       const claims = path.endsWith('claims.csv');

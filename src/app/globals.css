@@ -412,6 +412,8 @@ legend { max-width:100%; }
  .tvgame .hero h1 { font-size:48px; }
  .tvgame .screen[data-s="signup"] form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
  .tvgame .screen[data-s="signup"] form > :is(.two,fieldset,.opt,.btn,.err,.errbox) { grid-column:1/-1; }
+ .tvgame .screen[data-s="profile"] form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; align-items:start; }
+ .tvgame .screen[data-s="profile"] form > :is(.industry-field,.btn) { grid-column:1/-1; }
  .tvgame .two { display:contents; }
  .tvgame .screen[data-s="audience"] { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
  .tvgame .screen[data-s="audience"] > div:first-child { grid-column:1/-1; }
