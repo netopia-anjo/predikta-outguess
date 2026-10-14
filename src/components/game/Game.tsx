@@ -704,6 +704,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
           ))}
         </div>
         <div className="rs">
+          {rv.insightSource==='illustrative'&&<span className="eyebrow">Simulated audience · illustrative examples</span>}
           {rv.split && <div className="split">
             <span className="eyebrow">Audience preference</span>
             <SplitBar winner={rv.winner} split={rv.split} />
@@ -711,10 +712,11 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
           <div className="insight">
             <div><span className="eyebrow">Winning ad</span><b>Ad {rv.winner.toUpperCase()}</b></div>
             <div><span className="eyebrow">Your pick</span><b>{res.pick ? `Ad ${res.pick.toUpperCase()} · ${CONF[res.conf].label}` : 'No pick'}</b></div>
-            {rv.emotion && <div><span className="eyebrow">Top emotion</span><b>{rv.emotion}</b></div>}
+            {rv.emotion && <div className="full"><span className="eyebrow">Top emotion</span><b>{rv.emotion}</b></div>}
             {rv.driver && <div className="full"><span className="eyebrow">Behavioral driver</span><b style={{ fontWeight: 500 }}>{rv.driver}</b></div>}
           </div>
           {!!rv.reactions.length && <div className="bubbles">
+            {rv.insightSource==='illustrative'&&<span className="eyebrow">Simulated reactions</span>}
             {rv.reactions.map((r) => <div className="bub" key={r.text}>{r.text}<small>{r.respondent}</small></div>)}
           </div>}
         </div>
@@ -756,7 +758,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
           </table>
           <button className="toggle" aria-pressed={me.wantsSim} disabled={s.busy} onClick={() => toggleSim()}>
             <span className="box">{me.wantsSim ? '✓' : ''}</span>
-            <span>Run a real Predikta simulation on my next campaign</span>
+            <span>Run a real Predikta simulation on my next campaign, I would like a trial!</span>
           </button>
         </div>
         <button className="btn spark" disabled={s.busy} onClick={beginClaim}>
@@ -789,7 +791,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
           <p className="small muted" style={{margin:0}}>Show your QR to staff for a chance to win a prize. While supplies last.</p>
           {prizes?.remaining === 0 && <p className="small muted" style={{margin:0}}>Prizes are currently out of stock. Your score and claim code are saved.</p>}
         </>}
-        <p className="small">Want to know more? <a className="linkish" href={content.contactUrl} target="_blank" rel="noopener noreferrer">Click here</a></p>
+        <a className="btn spark claim-contact" href={content.contactUrl} target="_blank" rel="noopener noreferrer">Know more about AdSpark x Predikta</a>
       </div>
       <div className="spacer" />
       {variant === 'tv' && <button className="btn soft" onClick={reset}>Next player</button>}

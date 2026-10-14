@@ -32,9 +32,12 @@ export function isMarketingLeader(role: string): boolean {
 }
 /** Integer weights preserve secure integer-ticket sampling, including the lower package weight. */
 export function prizeWeights(stock: readonly PrizeStock[], role = '') {
-  const packageWeight = isMarketingLeader(role) ? 8 : 1;
+  const leader=isMarketingLeader(role);
+  // At full daily stock: 85% * (5 * 480) / (5 * 480 + 150 * 52) = 20%.
+  const packageWeight = leader ? 480 : 1;
+  const otherWeight = leader ? 52 : 4;
   return stock.filter(p => p.remaining > 0).map(prize => ({
-    prize, weight: prize.remaining * (prize.id === 'predikta_package' ? packageWeight : 4),
+    prize, weight: prize.remaining * (prize.id === 'predikta_package' ? packageWeight : otherWeight),
   }));
 }
 const COLORS = ['#ffd166', '#3fe0ff', '#8b5cf6', '#ff3da8', '#2f6bff', '#ffc34d', '#4ade80', '#fb923c', '#c084fc', '#67e8f9'];

@@ -52,7 +52,7 @@ test('ad import: public content hides answers and retains all fifteen supplied p
   const seed=await loadSeed(true);
   const c=publicContent(seed.content,'https://example.com',true,seed.consentText,seed.consentVersion);
   const text=JSON.stringify(c);
-  for(const k of ['"winner"','"split"','"emotion"','"driver"','"reactions"','"surprise"'])expect(text).not.toContain(k);
+  for(const k of ['"winner"','"split"','"emotion"','"driver"','"reactions"','"surprise"','"insightSource"'])expect(text).not.toContain(k);
   expect(c.audiences.reduce((n,a)=>n+a.rounds.length,0)).toBe(15);
 });
 test('schedule rejects overallocations and overlap; day uses Manila timezone',()=>{
@@ -72,7 +72,7 @@ test('package odds: balanced probabilities preserve no-prize and handle depleted
   const stock=PRIZES.map(p=>({...p,total:DAILY_QUANTITIES[p.id],fulfilled:0,remaining:DAILY_QUANTITIES[p.id]}));
   const ordinary=wheelSnapshot(stock,'','Marketing Manager');const leader=wheelSnapshot(stock,'','Head of Marketing');
   expect(ordinary.items.find(p=>p.id==='predikta_package')?.probability).toBeCloseTo(.85*5/605,8);
-  expect(leader.items.find(p=>p.id==='predikta_package')?.probability).toBeCloseTo(.85*40/640,8);
+  expect(leader.items.find(p=>p.id==='predikta_package')?.probability).toBeCloseTo(.20,8);
   for(const result of [ordinary,leader]){expect(result.items[0].probability).toBe(.15);expect(result.items.reduce((n,p)=>n+p.probability,0)).toBeCloseTo(1);}
   const noPackages=stock.map(p=>p.id==='predikta_package'?{...p,remaining:0}:p);
   expect(wheelSnapshot(noPackages,'','CMO').items.some(p=>p.id==='predikta_package')).toBe(false);
@@ -83,17 +83,21 @@ test('package odds: balanced probabilities preserve no-prize and handle depleted
 });
 
 
-test('ad import: winner-only content has real images and no fabricated insights',async()=>{
+test('ad import: supplied images have complete explicitly illustrative insights',async()=>{
   const seed=await loadSeed(true);
-  expect(seed.content.respondents).toEqual([]);
+  expect(seed.content.respondents).toHaveLength(6);
+  expect(seed.content.respondents.every(r=>r.includes('simulated reaction'))).toBe(true);
   for(const audience of seed.content.audiences){
     expect(audience.rounds).toHaveLength(5);
     for(const round of audience.rounds){
-      expect(round).toMatchObject({winner:'b',split:null,emotion:null,driver:null,reactions:[]});
+      expect(round).toMatchObject({winner:'b',insightSource:'illustrative'});
+      expect(round.split!.a+round.split!.b).toBe(100);expect(round.split!.b).toBeGreaterThan(50);
+      expect(round.emotion?.trim()).toBeTruthy();expect(round.driver?.trim()).toBeTruthy();
+      expect(round.reactions).toHaveLength(2);expect(round.reactions.every(r=>r.trim())).toBe(true);
       expect(round.a.image).toMatch(/-a-[a-f0-9]{12}\.webp$/);
       expect(round.b.image).toMatch(/-b-[a-f0-9]{12}\.webp$/);
     }
   }
   const invalid=structuredClone(seed.content.audiences);invalid[0].rounds[0].split={a:50,b:50};
-  expect(()=>validateContent(invalid,[])).toThrow('Invalid preference split');
+  expect(()=>validateContent(invalid,seed.content.respondents)).toThrow('Invalid preference split');
 });

@@ -28,6 +28,7 @@ export interface Round {
   emotion: string | null;
   driver: string | null;
   reactions: string[];
+  insightSource?: 'illustrative';
 }
 
 export interface Audience {
@@ -79,6 +80,7 @@ export interface Reveal {
   driver: string | null;
   surprise: boolean;
   reactions: Reaction[];
+  insightSource?: 'illustrative';
   result: RoundResult;
   wallet: number;
 }
