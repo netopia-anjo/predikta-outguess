@@ -28,7 +28,7 @@ npm run dev
 
 Open `http://localhost:3100/play`, `/tv`, or `/staff`. The example staff PIN is `4321`; it is for local testing. `DEMO_MODE=1` uses the supplied artwork and confirmed winners with the existing placeholder consent; it does not bypass image-file validation. Each day starts with the supplied 155-prize allocation: open `/staff` to verify quantities and the active day before booth play. Use separate databases for demo and production.
 
-`PUBLIC_URL` must match the browser origin; the join QR and mutation-origin checks use it. For phones on the same Wi-Fi, use your computer's LAN URL in `PUBLIC_URL` and restart the server. Camera scanning requires HTTPS or localhost; manual claim-code entry remains available.
+`PUBLIC_URL` must match the browser origin; the join QR and mutation-origin checks use it. The event’s production origin is `https://digicon.predikta.ai`; set this as Cloud Run’s `PUBLIC_URL` (without `/play`). The TV join QR then encodes `https://digicon.predikta.ai/play`. Use this domain for `/play`, `/tv` and `/staff` because mutation checks require the configured origin. Changing the runtime URL does not require migration or reseeding. For phones on the same Wi-Fi, use your computer's LAN URL in `PUBLIC_URL` and restart the server. Camera scanning requires HTTPS or localhost; manual claim-code entry remains available.
 
 ## Game and reward behavior
 
