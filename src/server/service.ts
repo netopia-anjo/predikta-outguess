@@ -7,7 +7,8 @@ import { publicContent, manilaStart, type StoredContent } from './content';
 import { scoreRound, summarize, ROUND_MS } from '../shared/rules';
 import { CLAIM_CODE_PATTERN, normalizeClaimCode, validStaffPin, validateCampaign, validateSignup } from '../shared/validation';
 import type { Board, ConfIdx, FulfillResult, Me, Prize, PrizeDay, PrizeDayStock, PrizeInventory, PrizeStock, DrawOutcome, Reveal, RoundResult, Side, StaffClaim } from '../shared/types';
-import { isPrizeDay, MAX_PRIZE_QUANTITY, NO_PRIZE_ID, NO_PRIZE_PERCENT, PRIZES, prizeWeights, wheelSnapshot } from '../shared/prizes';
+import { isPrizeDay, MAX_PRIZE_QUANTITY, NO_PRIZE_ID, NO_PRIZE_PERCENT, PRIZES, prizeWheelDisplay } from '../shared/prizes';
+import { prizeWeights, wheelSnapshot } from './prize-odds';
 
 type Db = Pool | PoolClient;
 export class HttpError extends Error {
@@ -313,7 +314,7 @@ export class GameService {
     const rows = (await this.pool.query(`SELECT p.*,c.code,c.awarded_at,c.claimed_at,c.prize_day,c.draw_outcome FROM players p LEFT JOIN claims c ON c.player_id=p.id WHERE p.event_id=$1 ORDER BY p.created_at DESC`,[e.id])).rows;
     const day = manilaStart(this.now());
     const isToday = (n: number | null) => n !== null && n >= day && n < day+86400_000;
-    const leads = rows.filter(p => p.planning === 'Yes' || p.wants_sim).map(p => ({name:p.name,email:p.email,company:p.company,role:p.role,challenge:p.challenge,planning:p.planning,wantsSim:p.wants_sim,claimed:!!p.claimed_at&&p.draw_outcome!=='no_prize'}));
+    const leads = rows.filter(p => p.planning === 'Yes' || p.wants_sim).map(p => ({name:p.name,email:p.email,company:p.company,role:p.role,challenge:p.challenge,planning:p.planning,wantsSim:p.wants_sim,claimed:!!p.claimed_at&&p.draw_outcome!=='no_prize',drawComplete:!!p.claimed_at}));
     const inventory=await this.inventory();
     return { inventory,kpis: {playsToday:rows.filter(p => isToday(p.finished_at)).length,claimedToday:rows.filter(p => isToday(p.claimed_at)&&p.draw_outcome!=='no_prize').length,
       noPrizeDraws:rows.filter(p=>p.draw_outcome==='no_prize'&&p.prize_day===inventory.activeDay).length,remaining:inventory.remaining,hotLeads:leads.length},
@@ -355,7 +356,7 @@ export class GameService {
       await db.query('UPDATE claims SET prize_id=$3,wheel_snapshot=$4,claimed_at=$5,staff_session=$6,draw_outcome=$7,prize_day=$8 WHERE code=$1 AND event_id=$2',
         [clean,this.options.eventId,prize?.id??null,JSON.stringify(wheel),this.now(),staff,prize?'prize':'no_prize',inventory.activeDay]);
       await db.query('UPDATE events SET inventory_revision=inventory_revision+1 WHERE id=$1',[this.options.eventId]);
-      return {...await this.claimView(clean,db),replayed:false,wheel};
+      return {...await this.claimView(clean,db),replayed:false,wheel:prizeWheelDisplay(items,wheel.prizeId)};
     });
   }
   async exportRows(token: string) {

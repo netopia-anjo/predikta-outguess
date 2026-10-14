@@ -7,11 +7,12 @@ import { Brand } from './game/bits';
 import { InventoryPanel } from './InventoryPanel';
 import { PrizeWheel } from './PrizeWheel';
 import type { FulfillResult, PrizeInventory, PrizeWheelResult, StaffClaim } from '@/shared/types';
-import { NO_PRIZE_LABEL, wheelSnapshot } from '@/shared/prizes';
+import { NO_PRIZE_LABEL, prizeWheelDisplay } from '@/shared/prizes';
 import { CLAIM_CODE_PATTERN, normalizeClaimCode, validStaffPin } from '@/shared/validation';
 
 type Claim = StaffClaim;
-interface Lead {name:string;email:string;company:string;role:string;challenge:string|null;planning:string|null;wantsSim:boolean;claimed:boolean}
+interface Lead {name:string;email:string;company:string;role:string;challenge:string|null;planning:string|null;wantsSim:boolean;claimed:boolean;drawComplete?:boolean}
+type FulfillmentFilter='all'|'fulfilled'|'unfulfilled';
 interface Summary {
   inventory:PrizeInventory;
   kpis:{playsToday:number;claimedToday:number;remaining:number;hotLeads:number;noPrizeDraws:number};
@@ -74,6 +75,7 @@ export function StaffApp() {
   const [revealing,setRevealing]=useState(false);
   const [scanning,setScanning]=useState(false);
   const [filter,setFilter]=useState('');
+  const [fulfillmentFilter,setFulfillmentFilter]=useState<FulfillmentFilter>('all');
   const [pendingPage,setPendingPage]=useState(1);
   const [leadsPage,setLeadsPage]=useState(1);
   const [codeError,setCodeError]=useState('');
@@ -146,7 +148,14 @@ export function StaffApp() {
     catch(e){fail(e,'Could not sign out. Try again.');}finally{end();}
   }
   const pending=summary?.pending??[];
-  const leads=summary?.leads.filter(p=>`${p.name} ${p.company} ${p.email} ${p.role}`.toLowerCase().includes(filter.trim().toLowerCase()))??[];
+  const allLeads=summary?.leads??[];
+  const fulfilledCount=allLeads.filter(p=>p.drawComplete??p.claimed).length;
+  const fulfillmentFilters=[['all','All',allLeads.length],['fulfilled','Fulfilled',fulfilledCount],['unfulfilled','Unfulfilled',allLeads.length-fulfilledCount]] as const;
+  const leads=allLeads.filter(p=>{
+    const complete=p.drawComplete??p.claimed;
+    return (fulfillmentFilter==='all'||(fulfillmentFilter==='fulfilled'?complete:!complete))&&
+      `${p.name} ${p.company} ${p.email} ${p.role}`.toLowerCase().includes(filter.trim().toLowerCase());
+  });
   const pendingPages=Math.max(1,Math.ceil(pending.length/STAFF_PAGE_SIZE));
   const leadsPages=Math.max(1,Math.ceil(leads.length/STAFF_PAGE_SIZE));
   // Live updates may remove the final page. Keep the view on a valid page.
@@ -170,7 +179,7 @@ export function StaffApp() {
         {claim&&<div className="pcard"><dl className="kv"><dt>Player</dt><dd>{claim.name}</dd><dt>Company</dt><dd>{claim.company} · {claim.role}</dd><dt>Business number</dt><dd className="num">{claim.mobile}</dd><dt>Code</dt><dd className="num">{claim.code}</dd><dt>Score</dt><dd>{fmt(claim.score??0)} · {claim.persona}</dd><dt>Status</dt><dd>{claim.outcome==='no_prize'?'Draw complete — no prize':claim.claimed?`Fulfilled ${claim.claimedAt?manilaTime(claim.claimedAt):''}`:'Awaiting prize draw'}{claim.prizeDay&&` · Day ${claim.prizeDay}`}</dd></dl>
           {revealing&&<p className="small muted" role="status">{wheel?'Revealing the saved result…':'Drawing…'}</p>}
           {wheel&&<PrizeWheel result={wheel} />}
-          {!wheel&&!claim.claimed&&!!summary?.inventory.remaining&&<PrizeWheel animate={false} result={wheelSnapshot(summary.inventory.items,'',claim.role)} />}
+          {!wheel&&!claim.claimed&&!!summary?.inventory.remaining&&<PrizeWheel animate={false} result={prizeWheelDisplay(summary.inventory.items)} />}
           {claim.claimed&&!revealing&&<div className="prize-result" role="status"><span className="eyebrow">{claim.outcome==='no_prize'?'Draw complete':'Prize fulfilled'}</span><h3>{claim.outcome==='no_prize'?NO_PRIZE_LABEL:claim.prize?.name??'Previously fulfilled · historical record'}</h3>
             {claim.outcome==='no_prize'&&<p className="small muted">No prize this time. This draw is complete and cannot be spun again.</p>}
             {claim.prize?.valuePhp&&<p className="small muted">Worth PHP {fmt(claim.prize.valuePhp)}. Arrange package redemption with booth staff.</p>}
@@ -185,6 +194,6 @@ export function StaffApp() {
         <span className="eyebrow">Waiting to claim ({summary?.pending.length??'–'})</span><div className="pend">{summary?.pending.length?visiblePending.map(p=><button key={p.code} disabled={busy} onClick={()=>find(p.code)}><span>{p.name}<span className="muted"> · {p.company}</span></span><code>{p.code}</code></button>):<p className="small muted">{summary?'Nobody waiting.':'Loading claims…'}</p>}</div>
         <StaffPagination label="Waiting claims" page={currentPendingPage} total={pending.length} disabled={busy} onPage={setPendingPage}/>
         {summary&&<p className="small muted">Day {summary.inventory.activeDay}: {fmt(summary.inventory.fulfilled)} prizes issued · {fmt(summary.inventory.remaining)} remaining · {fmt(summary.kpis.noPrizeDraws)} no-prize draws</p>}
-      </section><section className="panel"><h2>Hot leads</h2><p className="small muted">Planning a campaign in the next six months, or interested in a Predikta simulation.</p><label className="f">Search leads<input value={filter} onChange={e=>{setFilter(e.target.value);setLeadsPage(1);}} placeholder="Name, company, email or role"/></label><div className="tscroll"><table className="leads"><thead><tr><th>Player</th><th>Company · role</th><th>Challenge</th><th>Interest</th></tr></thead><tbody>{visibleLeads.map((p,i)=><tr key={`${p.email}-${(currentLeadsPage-1)*STAFF_PAGE_SIZE+i}`}><td data-label="Player"><b>{p.name}</b><br/><span className="small muted">{p.email}</span></td><td data-label="Company · role">{p.company}<br/><span className="small muted">{p.role}</span></td><td data-label="Challenge">{p.challenge||'—'}</td><td data-label="Interest">{p.planning==='Yes'&&<span className="flag hot">Campaign in 6 mo</span>}{p.wantsSim&&<span className="flag sim">Wants simulation</span>}{p.claimed&&<span className="flag cl">Fulfilled</span>}</td></tr>)}</tbody></table></div><StaffPagination label="Hot leads" page={currentLeadsPage} total={leads.length} disabled={busy} onPage={setLeadsPage}/>{!leads.length&&<p className="small muted">{summary?'No leads match yet.':'Loading leads…'}</p>}</section></div>
+      </section><section className="panel"><h2>Hot leads</h2><p className="small muted">Planning a campaign in the next six months, or interested in a Predikta simulation.</p><div className="lead-filters" role="group" aria-label="Filter hot leads by fulfillment">{fulfillmentFilters.map(([value,label,total])=><button type="button" className="ghost" key={value} aria-pressed={fulfillmentFilter===value} disabled={busy} onClick={()=>{setFulfillmentFilter(value);setLeadsPage(1);}}>{label} ({fmt(total)})</button>)}</div><p className="small muted">Fulfilled includes completed draws with no prize.</p><label className="f">Search leads<input value={filter} onChange={e=>{setFilter(e.target.value);setLeadsPage(1);}} placeholder="Name, company, email or role"/></label><div className="tscroll"><table className="leads"><thead><tr><th>Player</th><th>Company · role</th><th>Challenge</th><th>Interest</th></tr></thead><tbody>{visibleLeads.map((p,i)=><tr key={`${p.email}-${(currentLeadsPage-1)*STAFF_PAGE_SIZE+i}`}><td data-label="Player"><b>{p.name}</b><br/><span className="small muted">{p.email}</span></td><td data-label="Company · role">{p.company}<br/><span className="small muted">{p.role}</span></td><td data-label="Challenge">{p.challenge||'—'}</td><td data-label="Interest">{p.planning==='Yes'&&<span className="flag hot">Campaign in 6 mo</span>}{p.wantsSim&&<span className="flag sim">Wants simulation</span>}{p.claimed&&<span className="flag cl">Fulfilled</span>}{p.drawComplete&&!p.claimed&&<span className="flag">Draw complete · no prize</span>}</td></tr>)}</tbody></table></div><StaffPagination label="Hot leads" page={currentLeadsPage} total={leads.length} disabled={busy} onPage={setLeadsPage}/>{!leads.length&&<p className="small muted">{summary?'No leads match the selected filters.':'Loading leads…'}</p>}</section></div>
     </main></div>;
 }

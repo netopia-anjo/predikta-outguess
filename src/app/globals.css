@@ -211,6 +211,7 @@ legend{font-size:12px;font-weight:700;color:var(--ink);padding:0 4px}
 .staff-pagination-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px}
 .staff-pagination .ghost{min-height:44px}
 .staff-pagination-controls .small{white-space:nowrap}
+.lead-filters{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
 .tscroll{overflow-x:auto}
 .leads{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
 .leads th{text-align:left;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line)}

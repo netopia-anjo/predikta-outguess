@@ -112,7 +112,7 @@ export interface RewardState {
   prize: Prize | null;
   legacy: boolean;
 }
-export interface WheelSegment { id: string; name: string; probability: number; remaining: number | null }
+export interface WheelSegment { id: string; name: string; remaining: number | null }
 export interface PrizeWheelResult { items: WheelSegment[]; prizeId: string }
 export interface StaffClaim {
   outcome: DrawOutcome; prizeDay: PrizeDay | null;

@@ -5,7 +5,8 @@ import { makePool } from '../src/server/db';
 import { GameService } from '../src/server/service';
 import { loadSeed } from '../src/server/content';
 import { seedEvent } from '../src/server/seed';
-import { wheelSnapshot } from '../src/shared/prizes';
+import { prizeWheelDisplay } from '../src/shared/prizes';
+import { wheelSnapshot } from '../src/server/prize-odds';
 import { exportCsv } from '../src/server/csv';
 import type { PublicRound, Side } from '../src/shared/types';
 
@@ -239,19 +240,27 @@ test('daily prizes: the 15 percent boundary closes no-prize draws without consum
   const result=await missService.claim(staff,finished.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
   expect(result).toMatchObject({claimed:true,outcome:'no_prize',legacy:false,prize:null,prizeDay:1});
   expect(result.wheel?.prizeId).toBe('no_prize');
-  expect(result.wheel?.items[0]).toMatchObject({id:'no_prize',probability:.15,remaining:null});
-  expect(result.wheel!.items.reduce((n,p)=>n+p.probability,0)).toBeCloseTo(1);
+  expect(result.wheel?.items[0]).toMatchObject({id:'no_prize',remaining:null});
+  expect(JSON.stringify(result.wheel)).not.toContain('probability');
+  const stored=(await pool.query('SELECT wheel_snapshot FROM claims WHERE code=$1',[result.code])).rows[0].wheel_snapshot;
+  expect(stored.items[0].probability).toBe(.15);
   const current=await service.inventory();expect(current.days).toEqual(initial.days);
   const repeats=await Promise.all(Array.from({length:4},()=>winService.claim(staff,result.code,{confirmedNumber:true,fulfillmentConfirmed:true,day:2})));
   expect(repeats.every(r=>r.outcome==='no_prize'&&r.replayed)).toBe(true);
   expect((await service.current(player.token)).reward).toMatchObject({outcome:'no_prize',claimed:true,legacy:false});
   const summary=await service.summary(staff);expect(summary.kpis.claimedToday).toBe(0);expect(summary.kpis.noPrizeDraws).toBe(1);expect(summary.pending).toHaveLength(0);
   expect(summary.leads[0].claimed).toBe(false);
+  expect(summary.leads[0].drawComplete).toBe(true);
   const rows=await service.exportRows(staff);expect(rows[0]).toMatchObject({draw_outcome:'no_prize',prize_id:null});
   expect(exportCsv(rows,true)).toContain('"Thank you for playing"');
   const next=await register();const game=await play(next.token);
   const won=await winService.claim(staff,game.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
   expect(won.outcome).toBe('prize');expect((await service.inventory()).remaining).toBe(154);
+  await register({...signup(),name:'Undrawn Lead'});
+  const leads=(await service.summary(staff)).leads;
+  expect(leads.filter(p=>p.drawComplete)).toHaveLength(2);
+  expect(leads.filter(p=>p.claimed)).toHaveLength(1);
+  expect(leads.find(p=>p.name==='Undrawn Lead')).toMatchObject({claimed:false,drawComplete:false});
 });
 
 test('daily prizes: package value is separate from cash, and depleted stock blocks spins',async()=>{
@@ -262,7 +271,8 @@ test('daily prizes: package value is separate from cash, and depleted stock bloc
   const result=await service.claim(staff,finished.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1});
   expect(result.prize).toMatchObject({id:'predikta_package',amountPhp:null,valuePhp:75000});
   expect((await service.inventory()).cashRemainingPhp).toBe(0);
-  const wheel=result.wheel!;expect(wheel.items.map(p=>p.probability)).toEqual([.15,.85]);
+  expect(result.wheel?.items.map(p=>p.id)).toEqual(['no_prize','predikta_package']);
+  expect(JSON.stringify(result.wheel)).not.toContain('probability');
   const next=await register();const game=await play(next.token);
   const missService=new GameService(pool,service.options,()=>now,()=>0);
   await expect(missService.claim(staff,game.reward!.code!,{confirmedNumber:true,fulfillmentConfirmed:true,day:1})).rejects.toMatchObject({code:'out_of_stock'});
@@ -293,9 +303,10 @@ test('package odds: stored roles determine weighted draws and saved results neve
     const result=await biased.claim(staff,finished.reward!.code!,{day:1,confirmedNumber:true,fulfillmentConfirmed:true,role:role==='Marketing Manager'?'CMO':'Marketing Manager'});
     const expectedId=role==='Marketing Manager'?'gcash_100':'predikta_package';
     expect(result.prize?.id).toBe(expectedId);
-    expect(result.wheel).toEqual(wheelSnapshot(before.items,expectedId,role));
+    expect(result.wheel).toEqual(prizeWheelDisplay(before.items,expectedId));
+    expect(JSON.stringify(result.wheel)).not.toContain('probability');
     const snapshot=(await pool.query('SELECT wheel_snapshot FROM claims WHERE code=$1',[result.code])).rows[0].wheel_snapshot;
-    expect(snapshot).toEqual(result.wheel);
+    expect(snapshot).toEqual(wheelSnapshot(before.items,expectedId,role));
     const calls=draws.length;
     const replay=await biased.claim(staff,result.code,{day:2,confirmedNumber:true,fulfillmentConfirmed:true,role:'CMO'});
     expect(replay).toMatchObject({replayed:true,prizeDay:1,prize:{id:expectedId}});
