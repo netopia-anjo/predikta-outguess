@@ -14,7 +14,9 @@ export function useContent(path = '/api/content', onUnauthorized?: () => void) {
         const c = await api<ContentPayload>(path,{retries:1});
         if (!alive) return;
         setContent(c); setFailed(false);
-        for (const a of c.audiences) for (const r of a.rounds) for (const ad of [r.a,r.b]) if (ad.image) new Image().src=ad.image;
+        // Warm only the landing preview; gameplay loads the assigned pair before its timer.
+        const preview = c.audiences[0]?.rounds[0];
+        if (preview) for (const ad of [preview.a,preview.b]) if (ad.image) new Image().src=ad.image;
       } catch (e) {
         if (!alive) return;
         if (e instanceof ApiError && e.status === 401 && onUnauthorized) { onUnauthorized(); return; }

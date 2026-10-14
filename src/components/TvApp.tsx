@@ -59,7 +59,7 @@ function TvScreen({onAccessDenied,onLock,busy,message}:{onAccessDenied:()=>void;
           })}
         </ul>
       </div>
-      <div className="tvcard"><span className="eyebrow">Digicon vs. the simulation</span><span className="bigstat">{board?.stat.pct!=null?`${board.stat.pct}%`:'–'}</span><span className="tvsmall">{board?.stat.picks?`${fmt(board.stat.picks)} attendee picks · matched Predikta`:'The crowd is warming up. Make the first call.'}</span></div>
+      <div className="tvcard"><span className="eyebrow">Crowd prediction accuracy</span><span className="bigstat">{board?.stat.pct!=null?`${board.stat.pct}%`:'–'}</span><span className="tvsmall">{board?.stat.picks?`${fmt(board.stat.picks)} attendee picks · matched the winning ad`:'The crowd is warming up. Make the first call.'}</span></div>
       <div className="tvcard grow"><div className="head"><span className="eyebrow">Today’s top 10</span><span className={`tvsmall tvlive ${live?'':'off'}`}><i/>{live?'Live':'Reconnecting'}</span></div>
         <table className="lb"><caption className="sr-only">Today’s leaderboard</caption><tbody>{board?.leaderboard.map((p,i)=><tr key={p.id} className={p.id===player?'me':''}><td className="r">{String(i+1).padStart(2,'0')}</td><td>{p.name}</td><td className="s">{fmt(p.score)}</td></tr>)}</tbody></table>
         {!board?.leaderboard.length&&<span className="tvsmall">Your name could be here.</span>}

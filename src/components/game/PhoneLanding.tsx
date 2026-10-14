@@ -9,7 +9,7 @@ function PreviewAd({ ad, brand, label }: { ad: Ad; brand: string; label: string 
     {ad.image ? <img className="adimg" src={ad.image} alt={ad.visual} decoding="async" /> : <>
       <i className="sh s1" aria-hidden="true" /><i className="sh s2" aria-hidden="true" /><i className="sh s3" aria-hidden="true" />
     </>}
-    <span className="brand">{brand}</span><span className="lab">{label}</span>
+    {!ad.image && <span className="brand">{brand}</span>}<span className="lab">{label}</span>
     {!ad.image && <figcaption className="copy">{ad.copy}</figcaption>}
   </figure>;
 }
@@ -21,7 +21,7 @@ export function PhoneLanding({ content, board }: { content: ContentPayload; boar
   const rewardTitle = !inventory ? 'Checking prize availability…' : inventory.remaining > 0
     ? `${fmt(inventory.remaining)} ${inventory.remaining === 1 ? 'prize' : 'prizes'} available now`
     : 'Prizes currently unavailable.';
-  const rewardDetail = !inventory ? null : inventory.remaining > 0 ? 'Finish all 3 rounds to get a chance to win a prize. A 15% no-prize chance applies, while daily supplies last.'
+  const rewardDetail = !inventory ? null : inventory.remaining > 0 ? 'Finish all 3 rounds to get a chance to win a prize. While supplies last.'
     : 'You can still play for your score.';
   return <>
     <div className="hero play-hero">

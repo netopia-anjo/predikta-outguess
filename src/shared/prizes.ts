@@ -21,13 +21,29 @@ export const MAX_PRIZE_QUANTITY = 1_000_000;
 export const NO_PRIZE_ID = 'no_prize';
 export const NO_PRIZE_LABEL = 'Thank you for playing';
 export const NO_PRIZE_PERCENT = 15;
+const MARKETING_LEADER_ROLES = new Set([
+  'vp of marketing', 'vice president of marketing', 'vp marketing', 'vice president marketing',
+  'marketing vp', 'head of marketing', 'marketing head', 'cmo', 'chief marketing officer',
+  'marketing director', 'director of marketing',
+]);
+export function isMarketingLeader(role: string): boolean {
+  const title = role.normalize('NFKC').toLowerCase().replaceAll('.', '').replace(/[,\p{Dash_Punctuation}]/gu, ' ').replace(/\s+/g, ' ').trim();
+  return MARKETING_LEADER_ROLES.has(title);
+}
+/** Integer weights preserve secure integer-ticket sampling, including the lower package weight. */
+export function prizeWeights(stock: readonly PrizeStock[], role = '') {
+  const packageWeight = isMarketingLeader(role) ? 8 : 1;
+  return stock.filter(p => p.remaining > 0).map(prize => ({
+    prize, weight: prize.remaining * (prize.id === 'predikta_package' ? packageWeight : 4),
+  }));
+}
 const COLORS = ['#ffd166', '#3fe0ff', '#8b5cf6', '#ff3da8', '#2f6bff', '#ffc34d', '#4ade80', '#fb923c', '#c084fc', '#67e8f9'];
 export const prizeColor = (id: string) => id === NO_PRIZE_ID ? '#64748b' : COLORS[PRIZES.findIndex(p => p.id === id)] ?? '#3fe0ff';
-export function wheelSnapshot(stock: readonly PrizeStock[], prizeId = ''): PrizeWheelResult {
-  const items = stock.filter(p => p.remaining > 0);
-  const total = items.reduce((n,p) => n + p.remaining, 0);
+export function wheelSnapshot(stock: readonly PrizeStock[], prizeId = '', role = ''): PrizeWheelResult {
+  const items = prizeWeights(stock, role);
+  const total = items.reduce((n,p) => n + p.weight, 0);
   return { prizeId, items: total ? [
     { id: NO_PRIZE_ID, name: NO_PRIZE_LABEL, probability: NO_PRIZE_PERCENT / 100, remaining: null },
-    ...items.map(p => ({ id:p.id, name:p.name, remaining:p.remaining, probability:(100 - NO_PRIZE_PERCENT) / 100 * p.remaining / total })),
+    ...items.map(({prize,weight}) => ({ id:prize.id, name:prize.name, remaining:prize.remaining, probability:(100 - NO_PRIZE_PERCENT) / 100 * weight / total })),
   ] : [] };
 }

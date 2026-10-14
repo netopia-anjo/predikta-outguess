@@ -26,7 +26,7 @@ npm run db:seed
 npm run dev
 ```
 
-Open `http://localhost:3100/play`, `/tv`, or `/staff`. The example staff PIN is `4321`; it is for local testing. `DEMO_MODE=1` loads placeholder ads/results and consent. Each day starts with the supplied 155-prize allocation: open `/staff` to verify quantities and the active day before booth play. Use separate databases for demo and production.
+Open `http://localhost:3100/play`, `/tv`, or `/staff`. The example staff PIN is `4321`; it is for local testing. `DEMO_MODE=1` uses the supplied artwork and confirmed winners with the existing placeholder consent; it does not bypass image-file validation. Each day starts with the supplied 155-prize allocation: open `/staff` to verify quantities and the active day before booth play. Use separate databases for demo and production.
 
 `PUBLIC_URL` must match the browser origin; the join QR and mutation-origin checks use it. For phones on the same Wi-Fi, use your computer's LAN URL in `PUBLIC_URL` and restart the server. Camera scanning requires HTTPS or localhost; manual claim-code entry remains available.
 
@@ -51,17 +51,17 @@ The TV requires the same `STAFF_PIN` before showing the booth screen. Unlock it 
 
 ## Content and event setup
 
-`content/audiences.json` holds three audiences with three rounds each. Each ad can specify `image: "/content/ads/filename.webp"`; place the asset in `public/content/ads/`. Keep assets optimized and use a new filename when changing an image. `content/respondents.json` labels the simulated reactions.
+`content/audiences.json` holds three audiences with five supplied A/B pairs each. The 30 original PNGs came from `/Users/leandrozulaybar/Downloads/ROUNDS`: `AUDIENCE 1/GENZ-Q1..Q5-A/B`, `AUDIENCE 2/MOMS-Q1..Q5-A/B`, and `AUDIENCE 3/YP-Q1..Q5-A/B`. These map to the existing `genz`, `moms`, and `cebu` audience IDs. Source-based round labels and accurate headline/visual descriptions identify each pair without inventing brands.
 
-The supplied creatives, preference splits and reactions are placeholders. To activate production:
+The user confirmed that **B wins all 15 pairs** and chose to preserve those displayed labels. Each player receives three distinct randomly selected pairs in a random order from their chosen audience, stored in `players.round_indices` by migration `004_player_round_selection.sql`. Reselecting the same audience/retrying/resuming preserves that sample; server scoring and the player's displayed content share the same mapping. Old three-pair content and NULL selections retain the original order. Sessions still play three 30-second rounds with a maximum score of 690.
 
-1. Supply the final AdSpark images and approved Predikta results.
-2. Fill `content/approval.json` from its example with approved consent text/version and set `approved` and `contentApproved` only after approval. The old `scheduleConfirmed` flag and `content/gc-schedule.json` are no longer used for prize seeding.
-3. Set `DEMO_MODE=0`, a matching HTTPS `PUBLIC_URL`, a random `SESSION_SECRET` of at least 32 characters, and a private staff PIN.
-4. Run migrations and seed against the production database before starting the production service.
-5. Configure actual prize quantities in `/staff` and the AdSpark links described below.
+Optimized, content-hashed WebP files in `public/content/ads/` preserve the source 1122 × 1402 dimensions and reduce the combined payload from about 57.7 MB to 6.1 MB. Keep old filenames available for earlier content versions. Image creatives use contain sizing, portrait landing previews and enlargement so artwork is not cropped; synthetic brand overlays are hidden on image ads. Both ads load/decode before a new round timer starts. Failed loads offer retry without starting a new round; already-running resumed rounds retain server timing.
 
-Seeding imports immutable content versions and updates the active version. Existing games retain their original content. Re-seeding preserves players, claims, prize quantities and fulfillment counters. Migrations `002_prize_inventory.sql` and `003_daily_prizes.sql` retain historical GCash/whole-event inventory and claims; old fulfilled claims remain fulfilled without consuming new daily stock, and pending claims use the active day’s wheel. Migration 003 initializes the supplied daily quantities once for existing events; new-event seeding inserts missing daily rows only. Do not revise an applied migration; add a new migration instead.
+No preference percentages, emotions, behavioral drivers or reactions were supplied, so these fields are null/empty and hidden for the new content. Reveals show the winning ad, player pick/confidence and score. `content/respondents.json` is empty; legacy versions retain their saved insights and respondent labels. Content validation accepts either three-pair legacy audiences or five-pair pools, validates any supplied insights, and checks all referenced image files even with `DEMO_MODE=1`. Public content still hides answers.
+
+Keep `DEMO_MODE=1` for the current event database/runtime until approved consent/content activation is coordinated. Artwork and winners are now supplied, but `content/approval.json` flags remain false and its consent fields are placeholders. For approved-content activation, fill the approved consent/version and flags truthfully and follow the separate-database mode rule; do not simply flip the runtime mode on an existing placeholder-mode database.
+
+Seeding imports immutable content versions and updates the active version. Existing games retain their original content. Re-seeding preserves players, claims, prize quantities and fulfillment counters. Migrations `002_prize_inventory.sql` and `003_daily_prizes.sql` retain historical GCash/whole-event inventory and claims; old fulfilled claims remain fulfilled without consuming new daily stock, and pending claims use the active day’s wheel. Migration 003 initializes the supplied daily quantities once for existing events; new-event seeding inserts missing daily rows only. Migration 004 adds per-player selection storage without changing existing games, claims or inventory. Do not revise an applied migration; add a new migration instead.
 
 ## Staff prize setup
 
@@ -83,7 +83,9 @@ Open `/staff`, sign in, then choose **Daily prize inventory**. Day buttons chang
 
 Totals include prizes already issued; increase a total to restock. Negative/fractional quantities, totals below issued counts and stale revisions are rejected. Inventory edits, day activation and draws share the event lock. A draw submitted for a day that just changed is rejected before recording an outcome; review the active day and try again. Already resolved codes return their original outcome even after switching days. Earlier codes that have not been drawn use the day active when staff clicks Fulfill.
 
-The yellow TV cash banner shows the active day’s remaining GCash value (PHP 15,500 initially per day). Package value is separate from cash payouts: ten packages across both days are worth PHP 750,000. The package banner uses configured totals, so it does not decrease after wins; staff adjustments to package quantities update the advertised pool. Merchandise and package counts show active-day stock. A permanent 15% no-prize wheel segment remains as other prizes deplete; the remaining segments share 85% weighted by remaining units. With no prizes left, new spins are blocked until staff restocks or activates another day; games and draw codes still work.
+The yellow TV cash banner shows the active day’s remaining GCash value (PHP 15,500 initially per day). Package value is separate from cash payouts: ten packages across both days are worth PHP 750,000. The package banner uses configured totals, so it does not decrease after wins; staff adjustments to package quantities update the advertised pool. Merchandise and package counts show active-day stock. A permanent 15% no-prize wheel segment remains as other prizes deplete; the remaining segments share 85% using role-adjusted weights: each ordinary prize unit has weight 4; each package unit has weight 1 for ordinary roles or 8 for qualifying marketing leaders. With no prizes left, new spins are blocked until staff restocks or activates another day; games and draw codes still work.
+
+Package odds at full daily stock are approximately 0.7% per spin for ordinary roles and 5.3% for VP/Vice President of Marketing, Head of Marketing, CMO/Chief Marketing Officer and Marketing Director/Director of Marketing. Matching uses the saved registration role with case/space/period/comma/hyphen normalization and an exact title allowlist, including VP Marketing, Vice President Marketing, Marketing VP and Marketing Head. Partial titles, assistant roles and additional title text do not qualify. Staff preview and the server draw share the same calculation; client-supplied role/odds overrides are ignored. Probabilities vary as stock depletes; when packages are the only prize left, they share the entire 85% winning chance for all roles. Existing draw outcomes and wheel snapshots are preserved. This change needs no migration or environment variables.
 
 Player and staff screens distinguish pending, prize, no-prize and historical results. For compatibility, `claimed_at` is the terminal staff-draw timestamp for new outcomes; no-prize rows have `draw_outcome=no_prize` and no `prize_id`. Reports exclude them from prize fulfillment counts. CSV exports include outcome, draw timestamp, prize day, cash payout amount and separate package value. The old catalog/inventory remains archived and is not silently mapped into the supplied daily allocations.
 
@@ -91,7 +93,7 @@ Player and staff screens distinguish pending, prize, no-prize and historical res
 
 ## Focused checks
 
-Run `npm run lint`, `npm run typecheck`, and `npm run build`. The event workflow does not require broad unit or end-to-end suites. The targeted prize checks can run with `npm run test:integration -- -t 'daily prizes|prize fulfillment'`; they use a separate temporary schema on local PostgreSQL and verify concurrent last-item draws, idempotent fulfillment, stock edits/restocking, reseeding, historical claims, registration, the 15% boundary, no-prize retries, daily separation, day-switch races and package value. The post-game checks can run with `npm run test:integration -- -t 'campaign questions'`; they cover deferred code issuance, invalid answers, retries, saved answers in staff reporting, and existing codes. Set `TEST_DATABASE_URL` only to a disposable/local development database whose user can create schemas.
+Run `npm run lint`, `npm run typecheck`, and `npm run build`. The event workflow does not require broad unit or end-to-end suites. The targeted prize checks can run with `npm run test:integration -- -t 'daily prizes|prize fulfillment'`; they use a separate temporary schema on local PostgreSQL and verify concurrent last-item draws, idempotent fulfillment, stock edits/restocking, reseeding, historical claims, registration, the 15% boundary, no-prize retries, daily separation, day-switch races and package value. The ad-import checks can run with `npm run test -- -t 'ad import'` and `npm run test:integration -- -t 'ad selection|complete game has authoritative'`; they verify all image references, hidden answers, unique/stable three-pair samples, B-only scoring and legacy game preservation. The post-game checks can run with `npm run test:integration -- -t 'campaign questions'`; they cover deferred code issuance, invalid answers, retries, saved answers in staff reporting, and existing codes. Set `TEST_DATABASE_URL` only to a disposable/local development database whose user can create schemas.
 
 Manually check phone and TV registration, mobile limits and consent, complete three rounds, view results, submit the three campaign questions, scan the claim code, and confirm that Fulfill records one prize and updates the board. Check small phone/tablet widths and landscape TV; verify reduced-motion behavior and QR readability.
 
@@ -113,14 +115,13 @@ On first deployment, if the final service URL is not yet known, use `https://exa
 
 For production initialization, use an ignored `.env.production` file containing the production connection and configuration, then run `npx tsx --env-file=.env.production scripts/migrate.ts` and `npx tsx --env-file=.env.production scripts/seed.ts`. This avoids the local setup scripts' automatic loading of `.env.local`. Use the same mode, PIN, and session secret as the Cloud Run runtime configuration.
 
-When upgrading an existing deployment to daily prizes and the 15% no-prize wheel, run the additive migration and seed before deploying the new image:
+For this artwork/selection upgrade, keep the Cloud SQL Auth Proxy running and use this order:
 
-```sh
-npx tsx --env-file=.env.production scripts/migrate.ts
-npx tsx --env-file=.env.production scripts/seed.ts
-```
+1. Apply the additive migration: `npx tsx --env-file=.env.production scripts/migrate.ts`.
+2. Rebuild/upload a new image containing the new public assets, deploy it in Cloud Run and refresh booth browsers so they use the compatible reveal/selection renderer. Existing active content remains available at this point.
+3. Activate the new content: `npx tsx --env-file=.env.production scripts/seed.ts`, then reload the TV and new-player browsers. Match `DEMO_MODE=1` with the existing database/runtime.
 
-Keep the Cloud SQL Auth Proxy running for these commands. Do not reset the database or edit an already applied migration. Rebuild/upload with a new image tag, deploy it in Cloud Run, and refresh booth/staff browsers so they load the new reward API. Sign in at `/staff`, verify both daily allocations and activate the correct event day. Migration 003 creates the supplied quantities once; reseeding does not restore stock. Refresh old staff/TV browsers before drawing: new pending draws require an expected day. Existing claims retain their codes and past fulfillment history.
+Deploy before seeding the new artwork so active content never points to assets missing from the running image. Do not reset the database, edit an applied migration, or change content versions for existing players. Re-seeding preserves claims, daily allocations, active day and fulfillment history. No new environment variables are needed for this upgrade. Initial deployments still use the setup commands above; migration 003 creates the supplied daily stock once, and `/staff` selects the active event day.
 
 The template keeps one instance warm, permits three instances, uses concurrency 40, and limits each database pool to five connections. All sessions, throttling and inventory are stored in PostgreSQL, so replicas share state. Enable Cloud SQL backups and point-in-time recovery through your infrastructure configuration. Observe Cloud Run 5xx/latency, `/api/health`, and the staff reward totals; logs avoid request bodies and personal details.
 

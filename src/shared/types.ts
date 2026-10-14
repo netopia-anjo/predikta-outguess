@@ -24,9 +24,9 @@ export interface Round {
   a: Ad;
   b: Ad;
   winner: Side;
-  split: Record<Side, number>;
-  emotion: string;
-  driver: string;
+  split: Record<Side, number> | null;
+  emotion: string | null;
+  driver: string | null;
   reactions: string[];
 }
 
@@ -74,9 +74,9 @@ export interface Reaction {
 export interface Reveal {
   idx: number;
   winner: Side;
-  split: Record<Side, number>;
-  emotion: string;
-  driver: string;
+  split: Record<Side, number> | null;
+  emotion: string | null;
+  driver: string | null;
   surprise: boolean;
   reactions: Reaction[];
   result: RoundResult;

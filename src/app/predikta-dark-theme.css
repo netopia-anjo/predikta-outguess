@@ -404,3 +404,7 @@ textarea.csv { background: rgba(4, 10, 42, .55); color: #fff; border-color: var(
   .tvrail .tvqr canvas { width:30% !important; }
   .tvrail .bigstat { font-size:2.8cqw; }
 }
+
+/* Supplied portrait artwork stays intact in the game, preview and enlargement. */
+.ad .adimg { object-fit:contain; }
+.phone-landing .play-preview-ad:has(.adimg) { aspect-ratio:4/5; min-height:0; }
