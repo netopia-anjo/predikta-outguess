@@ -377,7 +377,7 @@ textarea.csv { background: rgba(4, 10, 42, .55); color: #fff; border-color: var(
 /* Daily stock and the permanent no-prize wheel outcome. */
 .inventory-day-controls, .inventory-days { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .inventory-day-controls { margin-bottom:8px; }
-.inventory-days button[aria-pressed=true] { border-color:var(--cyan); color:var(--cyan); background:rgba(63,224,255,.09); }
+.inventory-days button[aria-pressed=true], .lead-filters button[aria-pressed=true] { border-color:var(--cyan); color:var(--cyan); background:rgba(63,224,255,.09); }
 .inventory-day-controls > .btn { width:auto; padding:10px 16px; }
 .tv-merch-stock li > span { min-width:0; }
 .tv-merch-stock small { display:block; color:var(--muted); font-size:.8em; }

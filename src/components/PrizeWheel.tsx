@@ -7,8 +7,9 @@ export function PrizeWheel({result,animate=true}:{result:PrizeWheelResult;animat
   const [turn,setTurn]=useState(0);
   let angle=0;
   let winnerAngle=0;
+  const segmentAngle=result.items.length?360/result.items.length:0;
   const gradient=result.items.map(prize=>{
-    const start=angle;angle+=prize.probability*360;
+    const start=angle;angle+=segmentAngle;
     if(prize.id===result.prizeId)winnerAngle=(start+angle)/2;
     const color=prizeColor(prize.id);
     return `${color} ${start}deg ${angle}deg`;
@@ -21,6 +22,7 @@ export function PrizeWheel({result,animate=true}:{result:PrizeWheelResult;animat
     return()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);};
   },[target]);
   return <div className="prize-wheel">
+    <p className="small muted" style={{margin:0}}>The wheel reveals the recorded draw result.</p>
     <div className="prize-wheel-frame" aria-hidden="true">
       <span className="prize-wheel-pointer" />
       <div className="prize-wheel-disc" style={{background,transform:`rotate(${turn}deg)`}} />
@@ -28,7 +30,7 @@ export function PrizeWheel({result,animate=true}:{result:PrizeWheelResult;animat
     </div>
     <ul className="prize-wheel-legend" aria-label="Prizes in this draw">{result.items.map(prize=><li key={prize.id}>
       <i style={{background:prizeColor(prize.id)}} aria-hidden="true" />
-      <span>{prize.name}</span><small>{prize.id===NO_PRIZE_ID?'15% · no prize':`${prize.remaining} remaining · ${(prize.probability*100).toFixed(1)}%`}</small>
+      <span>{prize.name}</span><small>{prize.id===NO_PRIZE_ID?'No prize':`${prize.remaining} remaining`}</small>
     </li>)}</ul>
   </div>;
 }

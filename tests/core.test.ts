@@ -1,6 +1,7 @@
 import { describe,test,expect } from 'vitest';
 import { scoreRound,personaOf,summarize,MAX_SCORE } from '../src/shared/rules';
-import { DAILY_QUANTITIES, PRIZES, isMarketingLeader, wheelSnapshot } from '../src/shared/prizes';
+import { DAILY_QUANTITIES, PRIZES, prizeWheelDisplay } from '../src/shared/prizes';
+import { isMarketingLeader, wheelSnapshot } from '../src/server/prize-odds';
 import { validateSignup } from '../src/shared/validation';
 import { signToken,verifyToken } from '../src/server/auth';
 import { exportCsv,safeCell } from '../src/server/csv';
@@ -71,6 +72,10 @@ test('package odds: marketing title variants qualify but near-matches do not',()
 test('package odds: balanced probabilities preserve no-prize and handle depleted stock',()=>{
   const stock=PRIZES.map(p=>({...p,total:DAILY_QUANTITIES[p.id],fulfilled:0,remaining:DAILY_QUANTITIES[p.id]}));
   const ordinary=wheelSnapshot(stock,'','Marketing Manager');const leader=wheelSnapshot(stock,'','Head of Marketing');
+  const display=prizeWheelDisplay(stock,'predikta_package');
+  expect(display.items).toEqual(ordinary.items.map(({id,name,remaining})=>({id,name,remaining})));
+  expect(display.items).toEqual(leader.items.map(({id,name,remaining})=>({id,name,remaining})));
+  expect(JSON.stringify(display)).not.toContain('probability');
   expect(ordinary.items.find(p=>p.id==='predikta_package')?.probability).toBeCloseTo(.85*5/605,8);
   expect(leader.items.find(p=>p.id==='predikta_package')?.probability).toBeCloseTo(.20,8);
   for(const result of [ordinary,leader]){expect(result.items[0].probability).toBe(.15);expect(result.items.reduce((n,p)=>n+p.probability,0)).toBeCloseTo(1);}
