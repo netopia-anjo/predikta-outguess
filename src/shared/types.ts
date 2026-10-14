@@ -83,25 +83,37 @@ export interface Reveal {
   wallet: number;
 }
 
-export interface Prize { id: string; name: string; amountPhp: number | null }
+export type PrizeDay = 1 | 2;
+export type DrawOutcome = 'pending' | 'prize' | 'no_prize' | 'legacy';
+export interface Prize { id: string; name: string; amountPhp: number | null; valuePhp: number | null }
 export interface PrizeStock extends Prize { total: number; fulfilled: number; remaining: number }
-export interface PrizeInventory {
-  revision: number;
+export interface PrizeDayStock {
+  day: PrizeDay;
   items: PrizeStock[];
   total: number;
   fulfilled: number;
   remaining: number;
   cashRemainingPhp: number;
 }
+export interface PrizeInventory extends PrizeDayStock {
+  revision: number;
+  activeDay: PrizeDay;
+  days: PrizeDayStock[];
+  packagePoolValuePhp: number;
+}
 export interface RewardState {
+  outcome: DrawOutcome;
+  prizeDay: PrizeDay | null;
   code: string | null;
   claimed: boolean;
   mobileMasked: string;
   prize: Prize | null;
   legacy: boolean;
 }
-export interface PrizeWheelResult { items: PrizeStock[]; prizeId: string }
+export interface WheelSegment { id: string; name: string; probability: number; remaining: number | null }
+export interface PrizeWheelResult { items: WheelSegment[]; prizeId: string }
 export interface StaffClaim {
+  outcome: DrawOutcome; prizeDay: PrizeDay | null;
   name: string; company: string; role: string; mobile: string;
   score: number | null; persona: string | null; code: string;
   claimed: boolean; claimedAt: number | null; prize: Prize | null; legacy: boolean;

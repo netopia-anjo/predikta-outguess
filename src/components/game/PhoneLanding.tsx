@@ -21,7 +21,7 @@ export function PhoneLanding({ content, board }: { content: ContentPayload; boar
   const rewardTitle = !inventory ? 'Checking prize availability…' : inventory.remaining > 0
     ? `${fmt(inventory.remaining)} ${inventory.remaining === 1 ? 'prize' : 'prizes'} available now`
     : 'Prizes currently unavailable.';
-  const rewardDetail = !inventory ? null : inventory.remaining > 0 ? 'Finish all 3 rounds. Staff draw your prize, while supplies last.'
+  const rewardDetail = !inventory ? null : inventory.remaining > 0 ? 'Finish all 3 rounds to get a chance to win a prize. A 15% no-prize chance applies, while daily supplies last.'
     : 'You can still play for your score.';
   return <>
     <div className="hero play-hero">

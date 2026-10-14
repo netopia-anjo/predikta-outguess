@@ -51,6 +51,6 @@ export async function loadSeed(demo: boolean) {
 export function publicContent(c: StoredContent, publicUrl: string, demo: boolean, consentText: string, consentVersion: string,
   links: { contactUrl?: string; privacyPolicyUrl?: string | null } = {}): ContentPayload {
   return { version: c.id, demo, consentText, consentVersion, joinUrl: `${publicUrl}/play`,
-    contactUrl: links.contactUrl ?? 'https://www.adspark.ph/get-in-touch', privacyPolicyUrl: links.privacyPolicyUrl ?? null,
+    contactUrl: links.contactUrl ?? 'https://www.adspark.ph/get-in-touch', privacyPolicyUrl: links.privacyPolicyUrl ?? 'https://www.adspark.ph/privacy-policy',
     audiences: c.audiences.map(a => ({ ...a, rounds: a.rounds.map(r => ({ brand: r.brand, product: r.product, objective: r.objective, a: r.a, b: r.b })) })) };
 }

@@ -6,8 +6,8 @@ import { signToken, verifyToken, pinMatches } from './auth';
 import { publicContent, manilaStart, type StoredContent } from './content';
 import { scoreRound, summarize, ROUND_MS } from '../shared/rules';
 import { CLAIM_CODE_PATTERN, normalizeClaimCode, validStaffPin, validateCampaign, validateSignup } from '../shared/validation';
-import type { Board, ConfIdx, FulfillResult, Me, Prize, PrizeInventory, PrizeStock, Reveal, RoundResult, Side, StaffClaim } from '../shared/types';
-import { MAX_PRIZE_QUANTITY, PRIZES } from '../shared/prizes';
+import type { Board, ConfIdx, FulfillResult, Me, Prize, PrizeDay, PrizeDayStock, PrizeInventory, PrizeStock, DrawOutcome, Reveal, RoundResult, Side, StaffClaim } from '../shared/types';
+import { isPrizeDay, MAX_PRIZE_QUANTITY, NO_PRIZE_ID, NO_PRIZE_PERCENT, PRIZES, wheelSnapshot } from '../shared/prizes';
 
 type Db = Pool | PoolClient;
 export class HttpError extends Error {
@@ -20,16 +20,19 @@ interface Player {
   session_expires: number; wants_sim: boolean;
   industry: string | null; challenge: string | null; planning: string | null;
 }
-interface EventRow { id: string; demo: boolean; total_cap: number; awarded_count: number; active_content: string; consent_text: string; consent_version: string }
+interface EventRow { id: string; demo: boolean; total_cap: number; awarded_count: number; active_content: string; consent_text: string; consent_version: string; active_prize_day: PrizeDay }
 interface RoundRow { idx: number; started_at: number; locked_at: number | null; reveal: Reveal | null }
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const masked = (m: string) => `${m.slice(0,4)} ••• ${m.slice(-4)}`;
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const prizeOf = (row: { prize_id?: string | null; prize_name?: string; amount_php?: number | null }): Prize | null =>
-  row.prize_id ? { id:row.prize_id, name:row.prize_name!, amountPhp:row.amount_php ?? null } : null;
+const prizeOf = (row: { prize_id?: string | null; prize_name?: string; amount_php?: number | null; value_php?: number | null }): Prize | null =>
+  row.prize_id ? { id:row.prize_id, name:row.prize_name!, amountPhp:row.amount_php ?? null, valuePhp:row.value_php ?? null } : null;
+
+const outcomeOf = (row: { claimed_at?: number | null; prize_id?: string | null; draw_outcome?: 'prize' | 'no_prize' | null }): DrawOutcome =>
+  row.claimed_at ? row.draw_outcome ?? (row.prize_id ? 'prize' : 'legacy') : 'pending';
 
 export class GameService {
-  constructor(public pool: Pool, public options: Options, public now = () => Date.now()) {}
+  constructor(public pool: Pool, public options: Options, public now = () => Date.now(), private drawRandom: (max: number) => number = randomInt) {}
   async event(db: Db = this.pool, lock = false): Promise<EventRow> {
     const e = (await db.query(`SELECT * FROM events WHERE id=$1${lock ? ' FOR UPDATE' : ''}`, [this.options.eventId])).rows[0];
     if (!e) throw new HttpError(503,'event_not_seeded');
@@ -56,30 +59,45 @@ export class GameService {
     return (await db.query('SELECT * FROM rounds WHERE player_id=$1 ORDER BY idx',[id])).rows;
   }
   async inventory(db: Db = this.pool): Promise<PrizeInventory> {
-    const rows = (await db.query<PrizeStock & {revision:number}>(`SELECT p.id,p.name,p.amount_php AS "amountPhp",
-      i.total,i.fulfilled,i.total-i.fulfilled AS remaining,e.inventory_revision AS revision
-      FROM prize_inventory i JOIN prize_catalog p ON p.id=i.prize_id JOIN events e ON e.id=i.event_id
-      WHERE i.event_id=$1 ORDER BY p.position`,[this.options.eventId])).rows;
-    if (rows.length !== PRIZES.length) throw new HttpError(503,'prizes_not_initialized');
-    const items = rows.map(row=>({id:row.id,name:row.name,amountPhp:row.amountPhp,total:row.total,fulfilled:row.fulfilled,remaining:row.remaining}));
-    return {revision:rows[0].revision,items,total:items.reduce((n,p)=>n+p.total,0),
-      fulfilled:items.reduce((n,p)=>n+p.fulfilled,0),remaining:items.reduce((n,p)=>n+p.remaining,0),
-      cashRemainingPhp:items.reduce((n,p)=>n+p.remaining*(p.amountPhp??0),0)};
+    const rows = (await db.query<PrizeStock & {revision:number;day:PrizeDay;activeDay:PrizeDay}>(`SELECT p.id,p.name,p.amount_php AS "amountPhp",p.value_php AS "valuePhp",
+      i.day,i.total,i.fulfilled,i.total-i.fulfilled AS remaining,e.inventory_revision AS revision,e.active_prize_day AS "activeDay"
+      FROM daily_prize_inventory i JOIN prize_catalog p ON p.id=i.prize_id JOIN events e ON e.id=i.event_id
+      WHERE i.event_id=$1 AND p.active ORDER BY i.day,p.position`,[this.options.eventId])).rows;
+    if (rows.length !== PRIZES.length * 2) throw new HttpError(503,'prizes_not_initialized');
+    const days: PrizeDayStock[] = ([1,2] as const).map(day => {
+      const items = rows.filter(row => row.day === day).map(row=>({id:row.id,name:row.name,amountPhp:row.amountPhp,valuePhp:row.valuePhp,total:row.total,fulfilled:row.fulfilled,remaining:row.remaining}));
+      return {day,items,total:items.reduce((n,p)=>n+p.total,0),fulfilled:items.reduce((n,p)=>n+p.fulfilled,0),
+        remaining:items.reduce((n,p)=>n+p.remaining,0),cashRemainingPhp:items.reduce((n,p)=>n+p.remaining*(p.amountPhp??0),0)};
+    });
+    return {...days.find(day => day.day === rows[0].activeDay)!,revision:rows[0].revision,activeDay:rows[0].activeDay,days,
+      packagePoolValuePhp:rows.filter(row=>row.id==='predikta_package').reduce((n,p)=>n+p.total*(p.valuePhp??0),0)};
   }
   async staffInventory(token: string) { await this.staff(token); return this.inventory(); }
   async updateInventory(token: string, body: Record<string,unknown>) {
     await this.staff(token);
     const totals = body.totals;
-    if (!Number.isSafeInteger(body.revision) || Number(body.revision)<0 || !totals || typeof totals!=='object' || Array.isArray(totals)) throw new HttpError(400,'invalid_inventory');
+    if (!isPrizeDay(body.day) || !Number.isSafeInteger(body.revision) || Number(body.revision)<0 || !totals || typeof totals!=='object' || Array.isArray(totals)) throw new HttpError(400,'invalid_inventory');
     const values = totals as Record<string,unknown>;
     if (Object.keys(values).length!==PRIZES.length || PRIZES.some(p=>!Number.isInteger(values[p.id]) || Number(values[p.id])<0 || Number(values[p.id])>MAX_PRIZE_QUANTITY)) throw new HttpError(400,'invalid_inventory');
     return transaction(this.pool,async db=>{
       await this.event(db,true);
       const current=await this.inventory(db);
       if(current.revision!==body.revision)throw new HttpError(409,'inventory_changed');
-      if(current.items.some(p=>Number(values[p.id])<p.fulfilled))throw new HttpError(400,'below_fulfilled');
-      for(const p of current.items)await db.query('UPDATE prize_inventory SET total=$3 WHERE event_id=$1 AND prize_id=$2',[this.options.eventId,p.id,values[p.id]]);
+      const day=current.days.find(day=>day.day===body.day)!;
+      if(day.items.some(p=>Number(values[p.id])<p.fulfilled))throw new HttpError(400,'below_fulfilled');
+      for(const p of day.items)await db.query('UPDATE daily_prize_inventory SET total=$4 WHERE event_id=$1 AND day=$2 AND prize_id=$3',[this.options.eventId,day.day,p.id,values[p.id]]);
       await db.query('UPDATE events SET inventory_revision=inventory_revision+1 WHERE id=$1',[this.options.eventId]);
+      return this.inventory(db);
+    });
+  }
+  async switchPrizeDay(token: string, body: Record<string,unknown>) {
+    await this.staff(token);
+    if (!isPrizeDay(body.day) || !Number.isSafeInteger(body.revision) || Number(body.revision)<0) throw new HttpError(400,'invalid_inventory');
+    return transaction(this.pool,async db=>{
+      await this.event(db,true);
+      const current=await this.inventory(db);
+      if(current.revision!==body.revision)throw new HttpError(409,'inventory_changed');
+      if(current.activeDay!==body.day)await db.query('UPDATE events SET active_prize_day=$2,inventory_revision=inventory_revision+1 WHERE id=$1',[this.options.eventId,body.day]);
       return this.inventory(db);
     });
   }
@@ -89,9 +107,10 @@ export class GameService {
     const rows = await this.rounds(p.id,db);
     const results = rows.filter(r => r.reveal).map(r => r.reveal!.result);
     const open = rows.find(r => !r.locked_at);
-    const claim = (await db.query('SELECT c.*,p.name AS prize_name,p.amount_php FROM claims c LEFT JOIN prize_catalog p ON p.id=c.prize_id WHERE c.player_id=$1',[p.id])).rows[0];
+    const claim = (await db.query('SELECT c.*,p.name AS prize_name,p.amount_php,p.value_php FROM claims c LEFT JOIN prize_catalog p ON p.id=c.prize_id WHERE c.player_id=$1',[p.id])).rows[0];
     const reward: Me['reward'] = !p.finished_at ? null : {code:claim?.code??null,claimed:!!claim?.claimed_at,
-      mobileMasked:masked(p.mobile),prize:claim?prizeOf(claim):null,legacy:!!claim?.claimed_at&&!claim?.prize_id};
+      mobileMasked:masked(p.mobile),prize:claim?prizeOf(claim):null,legacy:!!claim&&outcomeOf(claim)==='legacy',
+      outcome:claim?outcomeOf(claim):'pending',prizeDay:claim?.prize_day??null};
     const profile = validateCampaign({...p});
     return { id: p.id, name: p.name, audienceId: p.audience_id, content: publicContent(c,this.options.publicUrl,e.demo,e.consent_text,e.consent_version,this.options),
       rounds: results, startedRound: open ? { idx: open.idx, elapsedMs: Math.max(0,this.now()-open.started_at) } : null,
@@ -266,22 +285,23 @@ export class GameService {
   async summary(token: string) {
     await this.staff(token);
     const e = await this.event();
-    const rows = (await this.pool.query(`SELECT p.*,c.code,c.awarded_at,c.claimed_at FROM players p LEFT JOIN claims c ON c.player_id=p.id WHERE p.event_id=$1 ORDER BY p.created_at DESC`,[e.id])).rows;
+    const rows = (await this.pool.query(`SELECT p.*,c.code,c.awarded_at,c.claimed_at,c.prize_day,c.draw_outcome FROM players p LEFT JOIN claims c ON c.player_id=p.id WHERE p.event_id=$1 ORDER BY p.created_at DESC`,[e.id])).rows;
     const day = manilaStart(this.now());
     const isToday = (n: number | null) => n !== null && n >= day && n < day+86400_000;
-    const leads = rows.filter(p => p.planning === 'Yes' || p.wants_sim).map(p => ({name:p.name,email:p.email,company:p.company,role:p.role,challenge:p.challenge,planning:p.planning,wantsSim:p.wants_sim,claimed:!!p.claimed_at}));
+    const leads = rows.filter(p => p.planning === 'Yes' || p.wants_sim).map(p => ({name:p.name,email:p.email,company:p.company,role:p.role,challenge:p.challenge,planning:p.planning,wantsSim:p.wants_sim,claimed:!!p.claimed_at&&p.draw_outcome!=='no_prize'}));
     const inventory=await this.inventory();
-    return { inventory,kpis: {playsToday:rows.filter(p => isToday(p.finished_at)).length,claimedToday:rows.filter(p => isToday(p.claimed_at)).length,remaining:inventory.remaining,hotLeads:leads.length},
+    return { inventory,kpis: {playsToday:rows.filter(p => isToday(p.finished_at)).length,claimedToday:rows.filter(p => isToday(p.claimed_at)&&p.draw_outcome!=='no_prize').length,
+      noPrizeDraws:rows.filter(p=>p.draw_outcome==='no_prize'&&p.prize_day===inventory.activeDay).length,remaining:inventory.remaining,hotLeads:leads.length},
       pending: rows.filter(p => p.code && !p.claimed_at).map(p => ({name:p.name,company:p.company,code:p.code,awardedAt:p.awarded_at})),leads };
   }
   async claimView(code: string, db: Db = this.pool): Promise<StaffClaim> {
     code = normalizeClaimCode(code);
     if (!CLAIM_CODE_PATTERN.test(code)) throw new HttpError(400,'invalid_claim_code');
-    const p = (await db.query(`SELECT p.name,p.company,p.role,p.mobile,p.score,p.persona,c.code,c.claimed_at,c.prize_id,
-      pc.name AS prize_name,pc.amount_php FROM claims c JOIN players p ON p.id=c.player_id
+    const p = (await db.query(`SELECT p.name,p.company,p.role,p.mobile,p.score,p.persona,c.code,c.claimed_at,c.prize_id,c.draw_outcome,c.prize_day,
+      pc.name AS prize_name,pc.amount_php,pc.value_php FROM claims c JOIN players p ON p.id=c.player_id
       LEFT JOIN prize_catalog pc ON pc.id=c.prize_id WHERE c.code=$1 AND c.event_id=$2 AND p.finished_at IS NOT NULL`,[code,this.options.eventId])).rows[0];
     if (!p) throw new HttpError(404,'no_such_code');
-    return { name:p.name,company:p.company,role:p.role,mobile:p.mobile,score:p.score,persona:p.persona,code:p.code,claimed:!!p.claimed_at,claimedAt:p.claimed_at,prize:prizeOf(p),legacy:!!p.claimed_at&&!p.prize_id };
+    return { name:p.name,company:p.company,role:p.role,mobile:p.mobile,score:p.score,persona:p.persona,code:p.code,claimed:!!p.claimed_at,claimedAt:p.claimed_at,prize:prizeOf(p),legacy:outcomeOf(p)==='legacy',outcome:outcomeOf(p),prizeDay:p.prize_day??null };
   }
   async lookup(token: string, code: string) { await this.staff(token); return this.claimView(code); }
   async claim(token: string, code: string, body: Record<string,unknown>): Promise<FulfillResult> {
@@ -295,21 +315,26 @@ export class GameService {
       const existing=await this.claimView(clean,db);
       if(existing.claimed)return {...existing,replayed:true,wheel:null};
       const inventory=await this.inventory(db);
+      if (!isPrizeDay(body.day)) throw new HttpError(400,'invalid_inventory');
+      if (body.day!==inventory.activeDay) throw new HttpError(409,'inventory_changed');
       const items=inventory.items.filter(p=>p.remaining>0);
       if(!items.length)throw new HttpError(409,'out_of_stock');
-      let ticket=randomInt(inventory.remaining);
-      const prize=items.find(p=>{ticket-=p.remaining;return ticket<0;})!;
-      const wheel={items,prizeId:prize.id};
-      await db.query('UPDATE prize_inventory SET fulfilled=fulfilled+1 WHERE event_id=$1 AND prize_id=$2',[this.options.eventId,prize.id]);
-      await db.query('UPDATE claims SET prize_id=$3,wheel_snapshot=$4,claimed_at=$5,staff_session=$6 WHERE code=$1 AND event_id=$2',
-        [clean,this.options.eventId,prize.id,JSON.stringify(wheel),this.now(),staff]);
+      let prize: PrizeStock | null = null;
+      if (this.drawRandom(100) >= NO_PRIZE_PERCENT) {
+        let ticket=this.drawRandom(inventory.remaining);
+        prize=items.find(p=>{ticket-=p.remaining;return ticket<0;})!;
+        await db.query('UPDATE daily_prize_inventory SET fulfilled=fulfilled+1 WHERE event_id=$1 AND day=$2 AND prize_id=$3',[this.options.eventId,inventory.activeDay,prize.id]);
+      }
+      const wheel=wheelSnapshot(items,prize?.id??NO_PRIZE_ID);
+      await db.query('UPDATE claims SET prize_id=$3,wheel_snapshot=$4,claimed_at=$5,staff_session=$6,draw_outcome=$7,prize_day=$8 WHERE code=$1 AND event_id=$2',
+        [clean,this.options.eventId,prize?.id??null,JSON.stringify(wheel),this.now(),staff,prize?'prize':'no_prize',inventory.activeDay]);
       await db.query('UPDATE events SET inventory_revision=inventory_revision+1 WHERE id=$1',[this.options.eventId]);
       return {...await this.claimView(clean,db),replayed:false,wheel};
     });
   }
   async exportRows(token: string) {
     await this.staff(token);
-    return (await this.pool.query(`SELECT p.*,c.code,c.awarded_at,c.claimed_at,c.prize_id,pc.name AS prize_name,pc.amount_php
+    return (await this.pool.query(`SELECT p.*,c.code,c.awarded_at,c.claimed_at,c.prize_id,c.draw_outcome,c.prize_day,pc.name AS prize_name,pc.amount_php,pc.value_php
       FROM players p LEFT JOIN claims c ON c.player_id=p.id LEFT JOIN prize_catalog pc ON pc.id=c.prize_id
       WHERE p.event_id=$1 ORDER BY p.created_at`,[this.options.eventId])).rows;
   }

@@ -11,7 +11,7 @@ import { AdCard, Brand, Dots, Qr, SplitBar, Wallet } from './bits';
 import { MobileInput } from './MobileInput';
 import { IndustrySelect } from './IndustrySelect';
 import { PhoneLanding } from './PhoneLanding';
-import { PRIZE_POOL_VALUE_PHP } from '@/shared/prizes';
+import { NO_PRIZE_LABEL } from '@/shared/prizes';
 
 export type Variant = 'phone' | 'tv';
 type Screen = 'landing' | 'signup' | 'howto' | 'audience' | 'round' | 'reveal' | 'results' | 'profile' | 'claim';
@@ -440,12 +440,12 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
         <div className="facts">
           <div className="fact"><b>3</b><span>rounds</span></div>
           <div className="fact"><b>3</b><span>minutes</span></div>
-          <div className="fact merch-fact"><b>Win</b><span>AdSpark Merch</span></div>
+          <div className="fact merch-fact"><b>Get a chance</b><span>to win a prize</span></div>
         </div>
         <div className="gcleft prize-value-banner">
-          <span><b>PHP {fmt(PRIZE_POOL_VALUE_PHP)}</b> Worth of Prizes to be given away</span>
+          <span><b>PHP {prizes ? fmt(prizes.packagePoolValuePhp) : '–'}</b> worth of Digicon × Predikta Packages across both days</span>
         </div>
-        <p className="small muted" style={{margin:0}}>Finish all 3 rounds to qualify, while supplies last.{prizes?.remaining === 0 && ' Prizes currently unavailable.'}</p>
+        <p className="small muted" style={{margin:0}}>Finish all 3 rounds to get a chance to win a prize. Day {prizes?.activeDay??'–'} prizes, while supplies last. A 15% chance of no prize applies.{prizes?.remaining === 0 && ' Prizes currently unavailable.'}</p>
         <div className="spacer" />
         <button className="btn spark" disabled={s.busy || !!s.token} onClick={() => go('signup')}>
           {s.token ? 'Resuming your game…' : variant === 'tv' ? 'Tap to play here' : 'Start playing'}
@@ -543,7 +543,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
       <div>
         <span className="eyebrow">One last step</span>
         <h2 style={{ fontSize: '26px', marginTop: '4px' }}>Tell us about your campaigns</h2>
-        <p className="small muted">Your score is saved. Answer these three questions to get your prize QR.</p>
+        <p className="small muted">Your score is saved. Answer these three questions to get your draw QR.</p>
       </div>
       {Object.values(e).some(Boolean) && <div className="errbox" role="alert">Please answer the highlighted questions to continue.</div>}
       <form noValidate aria-busy={s.busy} onChange={clearFieldError} onSubmit={ev => {
@@ -581,7 +581,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
             </div>
             {e.planning && <span className="err" id="profile-planning-error">{e.planning}</span>}
           </fieldset>
-        <button className="btn spark" type="submit" disabled={s.busy}>{s.busy ? 'Saving…' : 'Continue to my prize'}</button>
+        <button className="btn spark" type="submit" disabled={s.busy}>{s.busy ? 'Saving…' : 'Get my draw QR'}</button>
       </form>
     </>;
   }
@@ -751,7 +751,7 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
           </button>
         </div>
         <button className="btn spark" disabled={s.busy} onClick={beginClaim}>
-          Claim my prize
+          Get a chance to win a prize
         </button>
       </>
     );
@@ -763,19 +763,21 @@ export function Game({ variant, content: initialContent, prizes, landingBoard, o
     return <>
       <div className="claim">
         <span className="eyebrow">Show this to booth staff</span>
-        <h2 style={{ fontSize: '24px' }}>{reward.claimed ? 'Your prize' : 'Claim your prize'}</h2>
+        <h2 style={{ fontSize: '24px' }}>{reward.outcome==='no_prize'?NO_PRIZE_LABEL:reward.claimed?'Your prize':'Your prize draw'}</h2>
         {reward.code ? <>
-          <Qr text={reward.code} label={`Claim QR code for ${reward.code}`} />
+          {reward.outcome!=='no_prize'&&<Qr text={reward.code} label={`Prize draw QR code for ${reward.code}`} />}
           <span className="code">{reward.code}</span>
-        </> : <button className="btn" disabled={s.busy} onClick={() => refreshMe(true)}>Get claim code</button>}
+        </> : <button className="btn" disabled={s.busy} onClick={() => refreshMe(true)}>Get draw code</button>}
         <span className="small muted">Business number: {reward.mobileMasked}</span>
         {reward.prize && <h3 className="prize-winner">{reward.prize.name}</h3>}
         {reward.claimed ? <>
-          <span className="status done"><i />Fulfillment recorded</span>
+          <span className="status done"><i />{reward.outcome==='no_prize'?'Draw complete — no prize':'Fulfillment recorded'}</span>
+          {reward.outcome==='no_prize'&&<p className="small muted">No prize this time. Thanks for taking the challenge! Your score is saved.</p>}
+          {reward.prize?.valuePhp&&<p className="small muted">Worth PHP {fmt(reward.prize.valuePhp)}. Ask booth staff about package redemption.</p>}
           {reward.legacy && <span className="small muted">Previously fulfilled · historical record</span>}
         </> : <>
           <span className="status wait"><i />Waiting for staff</span>
-          <p className="small muted" style={{margin:0}}>Staff will draw your prize. Available while supplies last.</p>
+          <p className="small muted" style={{margin:0}}>Show your QR to staff for a chance to win a prize. A 15% no-prize chance applies. Available while daily supplies last.</p>
           {prizes?.remaining === 0 && <p className="small muted" style={{margin:0}}>Prizes are currently out of stock. Your score and claim code are saved.</p>}
         </>}
         <p className="small">Want to know more? <a className="linkish" href={content.contactUrl} target="_blank" rel="noopener noreferrer">Click here</a></p>

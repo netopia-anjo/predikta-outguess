@@ -1,5 +1,6 @@
 import type { Pool } from 'pg';
 import { transaction } from './db';
+import { DAILY_QUANTITIES, PRIZES } from '../shared/prizes';
 import type { loadSeed } from './content';
 export async function seedEvent(pool: Pool, eventId: string, demo: boolean, seed: Awaited<ReturnType<typeof loadSeed>>) {
   await transaction(pool, async db => {
@@ -10,6 +11,8 @@ export async function seedEvent(pool: Pool, eventId: string, demo: boolean, seed
     if (e.demo !== demo) throw new Error('Use a separate database for demo and production.');
     await db.query('UPDATE events SET active_content=$2,consent_version=$3,consent_text=$4 WHERE id=$1',[eventId,c.id,seed.consentVersion,seed.consentText]);
     // Create missing rows only. Never restore stock or change fulfillment counters when re-seeding.
-    await db.query('INSERT INTO prize_inventory(event_id,prize_id) SELECT $1,id FROM prize_catalog ON CONFLICT DO NOTHING',[eventId]);
+    for (const day of [1,2]) for (const prize of PRIZES) {
+      await db.query('INSERT INTO daily_prize_inventory(event_id,day,prize_id,total) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[eventId,day,prize.id,DAILY_QUANTITIES[prize.id]]);
+    }
   });
 }

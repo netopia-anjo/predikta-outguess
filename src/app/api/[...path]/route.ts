@@ -81,6 +81,7 @@ async function handle(req: NextRequest) {
       catch (e) { if (e instanceof HttpError && e.status === 401) data = {ok:false}; else throw e; }
     } else if (method === 'GET' && path === '/api/staff/summary') data = await service.summary(staff);
     else if (method === 'GET' && path === '/api/staff/inventory') data = await service.staffInventory(staff);
+    else if (method === 'POST' && path === '/api/staff/inventory/day') data = await service.switchPrizeDay(staff,body);
     else if (method === 'POST' && path === '/api/staff/inventory') data = await service.updateInventory(staff,body);
     else if (method === 'GET' && ['/api/staff/export.csv','/api/staff/claims.csv'].includes(path)) {
       const claims = path.endsWith('claims.csv');
