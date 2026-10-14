@@ -24,7 +24,7 @@ spec:
               memory: 512Mi
           env:
             - name: PUBLIC_URL
-              value: https://YOUR_APP_DOMAIN
+              value: https://digicon.predikta.ai
             - name: INSTANCE_CONNECTION_NAME
               value: PROJECT_ID:REGION:INSTANCE_NAME
             - name: DB_NAME
